@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data/
+coverage/
