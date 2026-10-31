@@ -35,7 +35,7 @@ export function AnalyticsPanel({ courseId, reloadToken = 0 }: { courseId: string
   const maxWeighted = Math.max(1, ...(analytics?.knowledge_points.map((point) => point.weighted_frequency) ?? []))
 
   return (
-    <section className="analytics-panel" aria-labelledby="analytics-title">
+    <section className="analytics-panel" id="analytics" aria-labelledby="analytics-title">
       <header className="analytics-heading">
         <div>
           <span className="eyebrow">COURSE ANALYTICS / SQL AGGREGATION</span>

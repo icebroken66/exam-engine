@@ -56,7 +56,7 @@ export function SolvePanel({ courseId, onSaved }: { courseId: string; onSaved?: 
   }
 
   return (
-    <section className="solve-workbench" aria-labelledby="solve-title">
+    <section className="solve-workbench" id="solve" aria-labelledby="solve-title">
       <header className="solve-heading">
         <div>
           <span className="eyebrow">AGENT / EVIDENCE-BOUND SOLVING</span>

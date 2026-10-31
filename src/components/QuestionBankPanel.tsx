@@ -152,7 +152,7 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
   }
 
   return (
-    <section className="question-bank" aria-labelledby="question-bank-title">
+    <section className="question-bank" id="questions" aria-labelledby="question-bank-title">
       <header className="question-bank-heading">
         <div>
           <span className="eyebrow">QUESTION BANK / HUMAN REVIEW</span>

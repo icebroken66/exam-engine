@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:api": ".venv\\Scripts\\python.exe -m pytest backend",
+    "demo:prepare": ".venv\\Scripts\\python.exe scripts/prepare_demo.py",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -106,6 +106,14 @@ a { color: inherit; }
 .course-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; padding-bottom: 42px; }
 .course-heading h1 { font-size: clamp(40px, 5.5vw, 70px); margin-bottom: 14px; }
 .course-heading p { margin: 0; font-size: 12px; }
+.workflow-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-bottom: 30px; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.workflow-nav a { display: grid; grid-template-columns: 27px 1fr; gap: 3px 8px; padding: 15px 14px; text-decoration: none; }
+.workflow-nav a + a { border-left: 1px solid var(--line); }
+.workflow-nav a:hover { background: rgba(244,241,232,.35); }
+.workflow-nav span { grid-row: span 2; font: 11px var(--mono); }
+.workflow-nav strong { font-size: 11px; }
+.workflow-nav small { color: #3d473e; font-size: 8px; line-height: 1.5; }
+#sources, #solve, #questions, #analytics { scroll-margin-top: 24px; }
 .completion-stamp { width: 115px; height: 126px; flex: 0 0 auto; border: 1px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .completion-stamp strong { font: 42px var(--mono); line-height: 1; }
 .completion-stamp span { margin-top: 10px; font-size: 11px; font-weight: 700; }

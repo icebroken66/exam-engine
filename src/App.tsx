@@ -112,8 +112,8 @@ function App() {
         )}
 
         <footer className="page-footer">
-          <span>证据优先 · 缺口可见 · 掌握度由作答决定</span>
-          <span>当前：M1 循证 Agent 演示</span>
+          <span>证据优先 · 缺口可见 · 统计必须可复算</span>
+          <span>当前：资料、循证解题、校题与统计已连通</span>
         </footer>
       </main>
 
@@ -166,12 +166,19 @@ function CourseWorkspace({ course }: { course: Course }) {
         <div>
           <span className="eyebrow">{course.school} / 课程 {course.id.slice(0, 8)}</span>
           <h1>{course.name}</h1>
-          <p>{examCountdown(course.exam_date)} · 课程已创建，下一步建立资料清单</p>
+          <p>{examCountdown(course.exam_date)} · 校本资料、原文证据与可复算统计</p>
         </div>
-        <div className="completion-stamp"><strong>01</strong><span>课程建档</span><small>闭环起点</small></div>
+        <div className="completion-stamp"><strong>04</strong><span>展示步骤</span><small>真实可用链路</small></div>
       </section>
 
-      <section className="course-grid">
+      <nav className="workflow-nav" aria-label="课程展示流程">
+        <a href="#sources"><span>01</span><strong>资料与证据</strong><small>原件、解析、完整性</small></a>
+        <a href="#solve"><span>02</span><strong>循证解题</strong><small>答案回到课程原文</small></a>
+        <a href="#questions"><span>03</span><strong>人工校题</strong><small>版本与审核留痕</small></a>
+        <a href="#analytics"><span>04</span><strong>考点统计</strong><small>SQL 可复算结果</small></a>
+      </nav>
+
+      <section className="course-grid" id="sources">
         <SourcePanel courseId={course.id} reloadToken={importVersion} />
 
         <aside className="next-brief">
