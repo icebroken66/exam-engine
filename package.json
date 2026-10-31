@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite",
-    "dev:api": ".venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000",
+    "dev:api": ".venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8010",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:api": ".venv\\Scripts\\python.exe -m pytest backend",

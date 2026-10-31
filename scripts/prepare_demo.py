@@ -10,7 +10,7 @@ from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[1]
-API_BASE = os.getenv("EXAM_ENGINE_API_URL", "http://127.0.0.1:8000").rstrip("/")
+API_BASE = os.getenv("EXAM_ENGINE_API_URL", "http://127.0.0.1:8010").rstrip("/")
 COURSE_NAME = os.getenv("EXAM_ENGINE_DEMO_COURSE", "操作系统原理 · 展示版")
 SOURCE_PATH = ROOT / "demo" / "周会演示_操作系统.md"
 QUESTIONS_PATH = ROOT / "demo" / "周会演示_题目.json"

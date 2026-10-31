@@ -2,8 +2,11 @@ from functools import lru_cache
 from pathlib import Path
 import os
 
+from dotenv import load_dotenv
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 @lru_cache

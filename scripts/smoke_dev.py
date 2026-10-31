@@ -59,13 +59,13 @@ def office_samples() -> tuple[bytes, bytes]:
 
 
 def parse_and_wait(source_id: str, expected_status: str) -> list[dict]:
-    task = request(f"http://127.0.0.1:8000/api/sources/{source_id}/parse", method="POST")
+    task = request(f"http://127.0.0.1:8010/api/sources/{source_id}/parse", method="POST")
     assert task["status"] == "queued"
     deadline = time.monotonic() + 20
     source = None
     while time.monotonic() < deadline:
         try:
-            sources = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/sources")
+            sources = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/sources")
             source = next(item for item in sources if item["id"] == source_id)
             if source["status"] in {"ready", "needs_review", "failed"}:
                 break
@@ -75,12 +75,13 @@ def parse_and_wait(source_id: str, expected_status: str) -> list[dict]:
     else:
         raise TimeoutError(f"资料 {source_id} 解析超时，最后状态：{source}")
     assert source["status"] == expected_status, source
-    return request(f"http://127.0.0.1:8000/api/sources/{source_id}/evidence")
+    return request(f"http://127.0.0.1:8010/api/sources/{source_id}/evidence")
 
 
 process = subprocess.Popen(
     ["npm.cmd", "run", "dev", "--", "--host", "127.0.0.1", "--port", "7100"],
     cwd=ROOT,
+    env={**os.environ, "MODEL_PROVIDER": "mock"},
     stdout=None,
     stderr=None,
 )
@@ -101,30 +102,30 @@ try:
         assert response.status == 200
         assert "期末急救引擎" in response.read().decode()
 
-    course = request("http://127.0.0.1:8000/api/courses", {
+    course = request("http://127.0.0.1:8010/api/courses", {
         "school": "冒烟测试学校",
         "name": "临时验收课程",
         "exam_date": "2027-01-12",
     })
     COURSE_ID = course["id"]
-    assert any(item["id"] == COURSE_ID for item in request("http://127.0.0.1:8000/api/courses"))
+    assert any(item["id"] == COURSE_ID for item in request("http://127.0.0.1:8010/api/courses"))
 
-    uploaded = upload(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/sources", b"# Smoke evidence\n")
+    uploaded = upload(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/sources", b"# Smoke evidence\n")
     SOURCE_ID = uploaded["source"]["id"]
     assert uploaded["source"]["status"] == "uploaded"
-    duplicate = upload(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/sources", b"# Smoke evidence\n")
+    duplicate = upload(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/sources", b"# Smoke evidence\n")
     assert duplicate["deduplicated"] and duplicate["source"]["id"] == SOURCE_ID
     evidence = parse_and_wait(SOURCE_ID, "ready")
     assert len(evidence) == 1 and "Smoke evidence" in evidence[0]["text"]
-    single = request(f"http://127.0.0.1:8000/api/evidence/{evidence[0]['id']}")
+    single = request(f"http://127.0.0.1:8010/api/evidence/{evidence[0]['id']}")
     assert single["id"] == evidence[0]["id"]
-    explanation = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/agent/explain", {
+    explanation = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/agent/explain", {
         "evidence_id": evidence[0]["id"],
         "focus": "冒烟验收",
     })
     assert explanation["mocked"] is True and explanation["evidence_id"] == evidence[0]["id"]
     assert explanation["summary"].startswith("Mock 讲解")
-    solution = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/agent/solve", {
+    solution = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/agent/solve", {
         "question": "Smoke evidence 的核心内容是什么？",
     })
     assert solution["mocked"] is True and "Smoke evidence" in solution["answer"]
@@ -141,28 +142,28 @@ try:
         "origin_year": 2026,
         "evidence_ids": [evidence[0]["id"]],
     }
-    question = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/questions", question_input)
+    question = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/questions", question_input)
     assert question["status"] == "draft" and question["version"] == 1
     assert question["citations"][0]["evidence_id"] == evidence[0]["id"]
-    edited_question = request(f"http://127.0.0.1:8000/api/questions/{question['id']}", {
+    edited_question = request(f"http://127.0.0.1:8010/api/questions/{question['id']}", {
         **question_input,
         "answer": f"{question['answer']}（人工校题补充）",
         "expected_version": 1,
         "change_note": "真实启动校题验收",
     }, method="PUT")
     assert edited_question["version"] == 2 and edited_question["status"] == "draft"
-    reviewed_question = request(f"http://127.0.0.1:8000/api/questions/{question['id']}/review", {
+    reviewed_question = request(f"http://127.0.0.1:8010/api/questions/{question['id']}/review", {
         "expected_version": 2,
         "change_note": "已核对课程证据",
     })
     assert reviewed_question["status"] == "verified" and reviewed_question["version"] == 3
-    revisions = request(f"http://127.0.0.1:8000/api/questions/{question['id']}/revisions")
+    revisions = request(f"http://127.0.0.1:8010/api/questions/{question['id']}/revisions")
     assert [item["version"] for item in revisions] == [3, 2, 1]
-    assert len(request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/questions")) == 1
-    knowledge_points = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/knowledge-points")
+    assert len(request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/questions")) == 1
+    knowledge_points = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/knowledge-points")
     assert len(knowledge_points) == len(solution["knowledge_points"])
     assert {item["name"] for item in knowledge_points} == set(solution["knowledge_points"])
-    analytics = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/analytics?half_life_years=3")
+    analytics = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/analytics?half_life_years=3")
     assert analytics["included_original_question_count"] == 1
     assert analytics["verified_question_count"] == 1 and analytics["draft_question_count"] == 0
     assert analytics["adapted_question_count"] == 0 and analytics["unknown_year_question_count"] == 0
@@ -176,14 +177,14 @@ try:
     actual_frequency = round(sum(point["weighted_frequency"] for point in analytics["knowledge_points"]), 6)
     assert actual_frequency == expected_frequency
     assert all(point["questions"] and point["questions"][0]["id"] == question["id"] for point in analytics["knowledge_points"])
-    usage = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/usage")
+    usage = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/usage")
     assert usage["course_used_tokens"] > 0 and len(usage["records"]) == 2
     assert {record["purpose"] for record in usage["records"]} == {"evidence_explanation", "question_solving"}
     assert {record["id"] for record in usage["records"]} == {explanation["usage_id"], solution["usage_id"]}
 
     docx_content, pptx_content = office_samples()
     docx = upload(
-        f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/sources",
+        f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/sources",
         docx_content,
         "smoke.docx",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -194,7 +195,7 @@ try:
     assert docx_evidence[0]["node_title"] == "冒烟验收章节"
 
     pptx = upload(
-        f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/sources",
+        f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/sources",
         pptx_content,
         "smoke.pptx",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -203,7 +204,7 @@ try:
     assert len(pptx_evidence) == 1 and pptx_evidence[0]["page_number"] == 1
     assert "PPTX 原文证据。" in pptx_evidence[0]["text"]
 
-    report = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/completeness")
+    report = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/completeness")
     assert report["total_sources"] == 3 and report["ready_sources"] == 2
     assert report["attention_sources"] == 1 and report["empty_nodes"] == 1
     assert report["complete"] is False
@@ -212,13 +213,13 @@ try:
     github_status = "skipped"
     if os.getenv("EXAM_ENGINE_SMOKE_GITHUB") == "1":
         github_url = "https://github.com/github/gitignore"
-        github_preview = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/github/preview", {
+        github_preview = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/github/preview", {
             "url": github_url,
             "ref": None,
             "path": "",
         })
         assert github_preview["files"] and len(github_preview["files"]) <= 20
-        github_import = request(f"http://127.0.0.1:8000/api/courses/{COURSE_ID}/github/import", {
+        github_import = request(f"http://127.0.0.1:8010/api/courses/{COURSE_ID}/github/import", {
             "url": github_url,
             "ref": None,
             "path": "",

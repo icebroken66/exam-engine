@@ -111,3 +111,29 @@ def test_openai_compatible_does_not_retry_client_rejection() -> None:
     with pytest.raises(ModelError, match="拒绝了请求"):
         provider.complete("system", "user", 100)
     assert calls == 1
+
+
+def test_openai_compatible_uses_node_after_tls_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("TLS handshake failed", request=request)
+
+    def run(command: list[str], **kwargs: object) -> object:
+        request = json.loads(kwargs["input"])
+        assert request["api_key"] == "test-key"
+        assert request["base_url"] == "https://api.example.com/v1"
+        assert request["payload"]["model"] == "test-model"
+        assert command[-1].endswith("openai_chat.mjs")
+        stdout = json.dumps({
+            "status": 200,
+            "body": json.dumps({
+                "choices": [{"message": {"content": json.dumps({"summary": "摘要", "key_points": ["重点"]})}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 8},
+            }),
+        })
+        return type("Completed", (), {"returncode": 0, "stdout": stdout})()
+
+    monkeypatch.setattr("app.model_gateway.subprocess.run", run)
+    provider = OpenAIProvider("test-key", "https://api.example.com/v1", "test-model", httpx.MockTransport(handler))
+    reply = provider.complete("system", "user", 100)
+    assert reply.usage.total_tokens == 20
+    assert json.loads(reply.content)["summary"] == "摘要"

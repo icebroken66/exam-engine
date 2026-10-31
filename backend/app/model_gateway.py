@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone
 import json
 import os
+from pathlib import Path
+import subprocess
 import threading
 from typing import Protocol, TypeVar
 
@@ -107,41 +109,73 @@ class OpenAIProvider:
         self.model = model
         self.transport = transport
 
+    @staticmethod
+    def _parse_response(response: httpx.Response) -> ProviderReply:
+        if response.status_code == 429 or response.status_code >= 500:
+            raise ModelError(502, "模型服务暂时不可用", retryable=True)
+        if response.status_code >= 400:
+            raise ModelError(502, f"模型服务拒绝了请求（{response.status_code}）")
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"]
+        raw_usage = payload.get("usage") or {}
+        usage = TokenUsage(
+            prompt_tokens=max(0, int(raw_usage.get("prompt_tokens", 0))),
+            completion_tokens=max(0, int(raw_usage.get("completion_tokens", 0))),
+        )
+        if not isinstance(content, str) or not content.strip():
+            raise ModelError(502, "模型返回了空内容")
+        return ProviderReply(content, usage)
+
+    def _complete_with_node(self, payload: dict) -> ProviderReply:
+        script = Path(__file__).resolve().parents[2] / "scripts" / "openai_chat.mjs"
+        try:
+            completed = subprocess.run(
+                ["node", str(script)],
+                input=json.dumps({
+                    "base_url": self.base_url,
+                    "api_key": self.api_key,
+                    "payload": payload,
+                }),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ModelError(504, "模型服务连接超时或网络失败", retryable=True) from error
+        if completed.returncode != 0:
+            raise ModelError(504, "模型服务连接超时或网络失败", retryable=True)
+        envelope = json.loads(completed.stdout)
+        response = httpx.Response(status_code=int(envelope["status"]), text=envelope["body"])
+        return self._parse_response(response)
+
     def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+        request_payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": max_tokens,
+        }
         last_error: ModelError | None = None
         for attempt in range(2):
             try:
-                with httpx.Client(
-                    timeout=httpx.Timeout(45.0, connect=10.0),
-                    transport=self.transport,
-                ) as client:
-                    response = client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={
-                            "model": self.model,
-                            "messages": [
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_prompt},
-                            ],
-                            "response_format": {"type": "json_object"},
-                            "max_tokens": max_tokens,
-                        },
-                    )
-                if response.status_code == 429 or response.status_code >= 500:
-                    raise ModelError(502, "模型服务暂时不可用", retryable=True)
-                if response.status_code >= 400:
-                    raise ModelError(502, f"模型服务拒绝了请求（{response.status_code}）")
-                payload = response.json()
-                content = payload["choices"][0]["message"]["content"]
-                raw_usage = payload.get("usage") or {}
-                usage = TokenUsage(
-                    prompt_tokens=max(0, int(raw_usage.get("prompt_tokens", 0))),
-                    completion_tokens=max(0, int(raw_usage.get("completion_tokens", 0))),
-                )
-                if not isinstance(content, str) or not content.strip():
-                    raise ModelError(502, "模型返回了空内容")
-                return ProviderReply(content, usage)
+                try:
+                    with httpx.Client(
+                        timeout=httpx.Timeout(45.0, connect=10.0),
+                        transport=self.transport,
+                    ) as client:
+                        response = client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers={"Authorization": f"Bearer {self.api_key}"},
+                            json=request_payload,
+                        )
+                except httpx.ConnectError:
+                    return self._complete_with_node(request_payload)
+                return self._parse_response(response)
             except (httpx.TimeoutException, httpx.RequestError) as error:
                 last_error = ModelError(504, "模型服务连接超时或网络失败", retryable=True)
             except ModelError as error:

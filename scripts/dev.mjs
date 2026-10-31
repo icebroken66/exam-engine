@@ -36,7 +36,7 @@ function stop(code = 0) {
 
 launch(python, [
   '-m', 'uvicorn', 'app.main:app', '--app-dir', 'backend',
-  '--host', '127.0.0.1', '--port', '8000', '--reload',
+  '--host', '127.0.0.1', '--port', '8010',
 ], { cwd: root })
 
 launch(python, ['-m', 'app.worker'], { cwd: path.join(root, 'backend') })
