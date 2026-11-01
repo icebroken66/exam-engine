@@ -255,6 +255,77 @@ export interface GitHubImportResult {
   failures: { path: string; message: string }[]
 }
 
+export type LearningStage = 'preparing' | 'diagnosing' | 'reviewing' | 'remediating' | 'practicing' | 'retesting' | 'planning' | 'simulating' | 'blocked' | 'completed'
+
+export interface LearningAttempt {
+  id: string
+  task_id: string
+  attempt_number: number
+  answer: string
+  verdict: 'correct' | 'incorrect' | 'ungraded'
+  grading_layer: string
+  confidence: number | null
+  feedback: string
+  missing_points: string[]
+  hints_used: number
+  duration_seconds: number
+  provider: string
+  model: string
+  mocked: boolean
+  usage_id: string | null
+  created_at: string
+}
+
+export interface LearningTask {
+  id: string
+  kind: 'diagnostic' | 'practice' | 'retest'
+  ordinal: number
+  knowledge_point: string
+  question_type: QuestionType
+  stem: string
+  options: string[]
+  provenance: string
+  reference_answer: string | null
+  study_answer: string | null
+  analysis: string | null
+  citations: QuestionCitation[]
+  latest_attempt: LearningAttempt | null
+}
+
+export interface LearningPointState {
+  knowledge_point: string
+  status: string
+  score: number
+  evidence_count: number
+  last_attempt_id: string | null
+  updated_at: string
+}
+
+export interface LearningEvent {
+  id: string
+  task_id: string | null
+  kind: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface LearningSession {
+  id: string
+  course_id: string
+  stage: LearningStage
+  current_task: LearningTask | null
+  diagnostic_total: number
+  diagnostic_completed: number
+  practice_completed: number
+  retest_passed: number
+  points: LearningPointState[]
+  recent_events: LearningEvent[]
+  agent_message: string
+  next_action: string
+  created_at: string
+  updated_at: string
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
@@ -369,4 +440,29 @@ export function importGithub(courseId: string, input: GitHubImportInput): Promis
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
+}
+
+export function startLearningSession(courseId: string, restart = false): Promise<LearningSession> {
+  const query = restart ? '?restart=true' : ''
+  return request<LearningSession>(`/api/courses/${courseId}/learning-sessions${query}`, { method: 'POST' })
+}
+
+export function getLearningSession(sessionId: string): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${sessionId}`)
+}
+
+export function submitLearningAttempt(sessionId: string, answer: string, durationSeconds: number): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${sessionId}/attempts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer, duration_seconds: durationSeconds }),
+  })
+}
+
+export function advanceLearningSession(sessionId: string): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${sessionId}/next`, { method: 'POST' })
+}
+
+export function requestLearningHint(sessionId: string): Promise<{ hint: string; session: LearningSession }> {
+  return request<{ hint: string; session: LearningSession }>(`/api/learning-sessions/${sessionId}/hints`, { method: 'POST' })
 }

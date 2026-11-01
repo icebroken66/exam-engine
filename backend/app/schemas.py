@@ -394,3 +394,109 @@ class CourseUsageRead(BaseModel):
     model: str
     mocked: bool
     records: list[UsageRecordRead]
+
+
+LearningStage = Literal[
+    "preparing", "diagnosing", "reviewing", "remediating", "practicing",
+    "retesting", "planning", "simulating", "blocked", "completed",
+]
+
+
+class LearningGradeContent(BaseModel):
+    is_correct: bool
+    confidence: float = Field(ge=0, le=1)
+    feedback: str = Field(min_length=1, max_length=4000)
+    missing_points: list[str] = Field(default=[], max_length=6)
+
+
+class LearningAttemptInput(BaseModel):
+    answer: str = Field(min_length=1, max_length=10_000)
+    duration_seconds: int = Field(default=0, ge=0, le=7200)
+
+    @field_validator("answer")
+    @classmethod
+    def strip_answer(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("作答不能为空")
+        return value
+
+
+class LearningAttemptRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str
+    attempt_number: int
+    answer: str
+    verdict: Literal["correct", "incorrect", "ungraded"]
+    grading_layer: str
+    confidence: float | None
+    feedback: str
+    missing_points: list[str]
+    hints_used: int
+    duration_seconds: int
+    provider: str
+    model: str
+    mocked: bool
+    usage_id: str | None
+    created_at: datetime
+
+
+class LearningTaskRead(BaseModel):
+    id: str
+    kind: Literal["diagnostic", "practice", "retest"]
+    ordinal: int
+    knowledge_point: str
+    question_type: QuestionType
+    stem: str
+    options: list[str]
+    provenance: str
+    reference_answer: str | None
+    study_answer: str | None
+    analysis: str | None
+    citations: list[QuestionEvidenceRead]
+    latest_attempt: LearningAttemptRead | None
+
+
+class LearningPointStateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    knowledge_point: str
+    status: str
+    score: float
+    evidence_count: int
+    last_attempt_id: str | None
+    updated_at: datetime
+
+
+class LearningEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str | None
+    kind: str
+    payload: dict
+    created_at: datetime
+
+
+class LearningSessionRead(BaseModel):
+    id: str
+    course_id: str
+    stage: LearningStage
+    current_task: LearningTaskRead | None
+    diagnostic_total: int
+    diagnostic_completed: int
+    practice_completed: int
+    retest_passed: int
+    points: list[LearningPointStateRead]
+    recent_events: list[LearningEventRead]
+    agent_message: str
+    next_action: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningHintRead(BaseModel):
+    hint: str
+    session: LearningSessionRead

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -164,3 +164,81 @@ class QuestionKnowledgePoint(Base):
     question_id: Mapped[str] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
     knowledge_point_id: Mapped[str] = mapped_column(ForeignKey("knowledge_points.id", ondelete="CASCADE"), index=True)
     ordinal: Mapped[int] = mapped_column(Integer)
+
+
+class LearningSession(Base):
+    __tablename__ = "learning_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(24), default="preparing", index=True)
+    current_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LearningTask(Base):
+    __tablename__ = "learning_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("learning_sessions.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    knowledge_point: Mapped[str] = mapped_column(String(120), index=True)
+    question_type: Mapped[str] = mapped_column(String(32))
+    stem: Mapped[str] = mapped_column(Text)
+    options: Mapped[list[str]] = mapped_column(JSON)
+    reference_answer: Mapped[str] = mapped_column(Text)
+    remediation_answer: Mapped[str] = mapped_column(Text)
+    analysis: Mapped[str] = mapped_column(Text)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSON)
+    provenance: Mapped[str] = mapped_column(String(24))
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LearningAttempt(Base):
+    __tablename__ = "learning_attempts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("learning_sessions.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("learning_tasks.id", ondelete="CASCADE"), index=True)
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    answer: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str] = mapped_column(String(24))
+    grading_layer: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text)
+    missing_points: Mapped[list[str]] = mapped_column(JSON)
+    hints_used: Mapped[int] = mapped_column(Integer, default=0)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(120))
+    mocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    usage_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class LearningPointState(Base):
+    __tablename__ = "learning_point_states"
+    __table_args__ = (UniqueConstraint("session_id", "knowledge_point", name="uq_learning_session_point"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("learning_sessions.id", ondelete="CASCADE"), index=True)
+    knowledge_point: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(24))
+    score: Mapped[float] = mapped_column(Float, default=0)
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LearningEvent(Base):
+    __tablename__ = "learning_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("learning_sessions.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

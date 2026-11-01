@@ -21,6 +21,7 @@ import { GitHubPanel } from './components/GitHubPanel'
 import { SolvePanel } from './components/SolvePanel'
 import { QuestionBankPanel } from './components/QuestionBankPanel'
 import { AnalyticsPanel } from './components/AnalyticsPanel'
+import { LearningPanel } from './components/LearningPanel'
 
 const workflow = [
   ['01', '汇集资料', '本地 / 1037 / GitHub'],
@@ -96,7 +97,7 @@ function App() {
 
       <main className="main-canvas">
         <header className="topbar">
-          <span>课程证据系统 / 开发基线</span>
+          <span>学习 Agent / A0 核心闭环</span>
           <div className={`service-status ${health ? 'online' : ''}`}>
             <span className="status-dot" />
             {health ? `API 正常 · ${health.database}` : 'API 未连接'}
@@ -112,8 +113,8 @@ function App() {
         )}
 
         <footer className="page-footer">
-          <span>证据优先 · 缺口可见 · 统计必须可复算</span>
-          <span>当前：资料、循证解题、校题与统计已连通</span>
+          <span>证据优先 · 作答留痕 · 低置信不冒充掌握</span>
+          <span>当前：主动诊断、针对补缺、同类练习与独立重测已连通</span>
         </footer>
       </main>
 
@@ -166,42 +167,49 @@ function CourseWorkspace({ course }: { course: Course }) {
         <div>
           <span className="eyebrow">{course.school} / 课程 {course.id.slice(0, 8)}</span>
           <h1>{course.name}</h1>
-          <p>{examCountdown(course.exam_date)} · 校本资料、原文证据与可复算统计</p>
+          <p>{examCountdown(course.exam_date)} · Agent 根据作答决定诊断、补缺与重测</p>
         </div>
-        <div className="completion-stamp"><strong>04</strong><span>展示步骤</span><small>真实可用链路</small></div>
+        <div className="completion-stamp"><strong>A0</strong><span>核心学习闭环</span><small>真实状态驱动</small></div>
       </section>
 
-      <nav className="workflow-nav" aria-label="课程展示流程">
-        <a href="#sources"><span>01</span><strong>资料与证据</strong><small>原件、解析、完整性</small></a>
-        <a href="#solve"><span>02</span><strong>循证解题</strong><small>答案回到课程原文</small></a>
-        <a href="#questions"><span>03</span><strong>人工校题</strong><small>版本与审核留痕</small></a>
-        <a href="#analytics"><span>04</span><strong>考点统计</strong><small>SQL 可复算结果</small></a>
-      </nav>
+      <LearningPanel key={course.id} courseId={course.id} />
 
-      <section className="course-grid" id="sources">
-        <SourcePanel courseId={course.id} reloadToken={importVersion} />
+      <details className="course-tools" id="course-tools">
+        <summary>资料与工具 / 原文证据、循证解题、校题与统计</summary>
+        <div className="course-tools-content">
+          <nav className="workflow-nav" aria-label="课程辅助工具">
+            <a href="#sources"><span>01</span><strong>资料与证据</strong><small>原件、解析、完整性</small></a>
+            <a href="#solve"><span>02</span><strong>循证解题</strong><small>答案回到课程原文</small></a>
+            <a href="#questions"><span>03</span><strong>人工校题</strong><small>版本与审核留痕</small></a>
+            <a href="#analytics"><span>04</span><strong>考点统计</strong><small>SQL 可复算结果</small></a>
+          </nav>
 
-        <aside className="next-brief">
-          <span className="eyebrow">1037 / 辅助导入</span>
-          <Library size={29} strokeWidth={1.5} />
-          <h2>官网下载，<br />回到这里上传。</h2>
-          <p>预览不完整或需要登录时，由你在官网自行登录并下载原件。上传后，系统会为文件建立独立解析状态。</p>
-          <a href="https://1037.wiki" target="_blank" rel="noreferrer">
-            打开 1037 官网 <ExternalLink size={15} />
-          </a>
-          <small>本产品不会接收你的 1037 密码，也不会绕过网站访问限制。</small>
-          <GitHubPanel courseId={course.id} onImported={() => setImportVersion((version) => version + 1)} />
-        </aside>
-      </section>
+          <section className="course-grid" id="sources">
+            <SourcePanel courseId={course.id} reloadToken={importVersion} />
 
-      <SolvePanel key={course.id} courseId={course.id} onSaved={() => setQuestionVersion((version) => version + 1)} />
-      <QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => setQuestionVersion((version) => version + 1)} />
-      <AnalyticsPanel courseId={course.id} reloadToken={questionVersion} />
+            <aside className="next-brief">
+              <span className="eyebrow">1037 / 辅助导入</span>
+              <Library size={29} strokeWidth={1.5} />
+              <h2>官网下载，<br />回到这里上传。</h2>
+              <p>预览不完整或需要登录时，由你在官网自行登录并下载原件。上传后，系统会为文件建立独立解析状态。</p>
+              <a href="https://1037.wiki" target="_blank" rel="noreferrer">
+                打开 1037 官网 <ExternalLink size={15} />
+              </a>
+              <small>本产品不会接收你的 1037 密码，也不会绕过网站访问限制。</small>
+              <GitHubPanel courseId={course.id} onImported={() => setImportVersion((version) => version + 1)} />
+            </aside>
+          </section>
 
-      <section className="principle-band">
-        <BookOpen size={22} />
-        <p><strong>循证解题、结构化入库与人工校题已可试用。</strong>题目保留原文、版本与审核状态；真实模型、判题与完整复习闭环仍在后续任务中。</p>
-      </section>
+          <SolvePanel key={course.id} courseId={course.id} onSaved={() => setQuestionVersion((version) => version + 1)} />
+          <QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => setQuestionVersion((version) => version + 1)} />
+          <AnalyticsPanel courseId={course.id} reloadToken={questionVersion} />
+
+          <section className="principle-band">
+            <BookOpen size={22} />
+            <p><strong>资料与题库是 Agent 的工具，不是学习主流程。</strong>真实模型与确定性判分已接入；低置信结果不会更新为确定掌握，重测通过也不冒充永久掌握。</p>
+          </section>
+        </div>
+      </details>
     </div>
   )
 }

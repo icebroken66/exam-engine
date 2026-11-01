@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session
 from .analytics import course_analytics, course_knowledge_points, sync_question_knowledge
 from .completeness import course_completeness
 from .config import get_data_dir
-from .database import Base, engine, get_db
+from .database import Base, engine, get_db, migrate_schema
 from .github import GitHubError, GitHubPreview, GitHubService
 from .ingestion import ParseStatus, assert_transition
+from .learning_sessions import (
+    LearningSessionError, advance_session, create_or_resume_session, read_learning_session, request_hint, submit_attempt,
+)
 from .model_gateway import ModelError, ModelGateway
 from .models import (
     Course, DocumentNode, EvidenceBlock, KnowledgePoint, ParseTask, Question, QuestionEvidence, QuestionRevision,
@@ -27,7 +30,8 @@ from .schemas import (
     AgentSolutionContent, AgentSolutionRead, AgentSolveInput,
     CourseAnalyticsRead, CourseCompletenessRead, CourseCreate, CourseRead, CourseUsageRead,
     DocumentNodeRead, EvidenceBlockRead, GitHubImportInput, GitHubImportRead, GitHubLocationInput, GitHubPreviewRead,
-    HealthRead, KnowledgePointRead, ParseTaskRead, QuestionCreateInput, QuestionRead, QuestionReviewInput,
+    HealthRead, KnowledgePointRead, LearningAttemptInput, LearningHintRead, LearningSessionRead,
+    ParseTaskRead, QuestionCreateInput, QuestionRead, QuestionReviewInput,
     QuestionRevisionRead, QuestionUpdateInput, SourceOriginRead, SourceRead, SourceUploadRead,
 )
 from .storage import StoredUpload, persist_bytes, persist_upload
@@ -175,6 +179,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         Base.metadata.create_all(bind=engine)
+        migrate_schema()
         upload_dir.mkdir(parents=True, exist_ok=True)
         yield
 
@@ -714,6 +719,50 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if report is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         return report
+
+    @app.post(
+        "/api/courses/{course_id}/learning-sessions",
+        response_model=LearningSessionRead,
+        tags=["learning"],
+    )
+    def start_learning_session(course_id: str, restart: bool = False, db: Session = Depends(get_db)) -> dict:
+        try:
+            return create_or_resume_session(db, course_id, restart)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.get("/api/learning-sessions/{session_id}", response_model=LearningSessionRead, tags=["learning"])
+    def get_learning_session(session_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return read_learning_session(db, session_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/attempts", response_model=LearningSessionRead, tags=["learning"])
+    def create_learning_attempt(
+        session_id: str,
+        payload: LearningAttemptInput,
+        db: Session = Depends(get_db),
+        gateway: ModelGateway = Depends(get_model_gateway),
+    ) -> dict:
+        try:
+            return submit_attempt(db, session_id, payload.answer, payload.duration_seconds, gateway)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/next", response_model=LearningSessionRead, tags=["learning"])
+    def next_learning_action(session_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return advance_session(db, session_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/hints", response_model=LearningHintRead, tags=["learning"])
+    def create_learning_hint(session_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return request_hint(db, session_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
     return app
 

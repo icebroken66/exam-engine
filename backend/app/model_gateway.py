@@ -60,7 +60,17 @@ class MockProvider:
     def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
         evidence = user_prompt.split("<evidence>", 1)[-1].split("</evidence>", 1)[0].strip()
         excerpts = [part.strip() for part in evidence.replace("\r", "\n").split("\n") if part.strip()]
-        if "<question>" in user_prompt:
+        if "<grading>" in user_prompt:
+            student = user_prompt.split("<student_answer>", 1)[-1].split("</student_answer>", 1)[0].strip()
+            reference = user_prompt.split("<reference_answer>", 1)[-1].split("</reference_answer>", 1)[0].strip()
+            correct = bool(student) and "".join(student.split()).casefold() == "".join(reference.split()).casefold()
+            content = json.dumps({
+                "is_correct": correct,
+                "confidence": 0.99,
+                "feedback": "Mock 判分：学生答案与参考答案文本等价。" if correct else "Mock 判分：学生答案与参考答案不一致。",
+                "missing_points": [] if correct else ["Mock 只用于流程测试，请用真实模型检查缺失要点"],
+            }, ensure_ascii=False)
+        elif "<question>" in user_prompt:
             question = user_prompt.split("<question>", 1)[-1].split("</question>", 1)[0].strip()
             first_block = evidence.split("\n\n[证据 ", 1)[0]
             first = first_block.split("原文：", 1)[-1].strip() if "原文：" in first_block else "资料不足"
