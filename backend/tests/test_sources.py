@@ -6,7 +6,10 @@ from app import storage
 
 
 def create_course(client: TestClient, name: str = "操作系统原理") -> str:
-    response = client.post("/api/courses", json={"school": "华中科技大学", "name": name})
+    response = client.post("/api/courses", json={
+        "school": "华中科技大学",
+        "name": name,
+    })
     assert response.status_code == 201
     return response.json()["id"]
 
@@ -26,7 +29,7 @@ def test_upload_list_and_download_source(client: TestClient, tmp_path: Path) -> 
     body = response.json()
     assert not body["deduplicated"]
     source = body["source"]
-    assert source["status"] == "uploaded"
+    assert source["status"] == "queued"
     assert source["original_name"] == "notes.md"
     assert len(source["sha256"]) == 64
     assert len(list((tmp_path / "uploads").iterdir())) == 1
@@ -89,17 +92,14 @@ def test_original_filename_cannot_control_storage_path(client: TestClient, tmp_p
     assert len(list((tmp_path / "uploads").iterdir())) == 1
 
 
-def test_queue_parse_task_and_reject_duplicate_active_task(client: TestClient) -> None:
+def test_upload_automatically_queues_parse_and_rejects_duplicate_active_task(client: TestClient) -> None:
     course_id = create_course(client)
-    source_id = upload(client, course_id).json()["source"]["id"]
-    queued = client.post(f"/api/sources/{source_id}/parse")
-    assert queued.status_code == 201
-    assert queued.json()["status"] == "queued"
-    assert queued.json()["attempt"] == 1
+    source = upload(client, course_id).json()["source"]
+    assert source["status"] == "queued"
 
-    duplicate = client.post(f"/api/sources/{source_id}/parse")
+    duplicate = client.post(f"/api/sources/{source['id']}/parse")
     assert duplicate.status_code == 409
-    tasks = client.get(f"/api/sources/{source_id}/tasks")
+    tasks = client.get(f"/api/sources/{source['id']}/tasks")
     assert len(tasks.json()) == 1
 
     sources = client.get(f"/api/courses/{course_id}/sources").json()
@@ -108,3 +108,46 @@ def test_queue_parse_task_and_reject_duplicate_active_task(client: TestClient) -
 
 def test_upload_to_missing_course_is_404(client: TestClient) -> None:
     assert upload(client, "missing").status_code == 404
+
+
+def test_batch_upload_preserves_paths_isolates_failures_and_deduplicates(client: TestClient) -> None:
+    course_id = create_course(client)
+    response = client.post(
+        f"/api/courses/{course_id}/sources/batch",
+        data={
+            "rights_confirmed": "true",
+            "relative_paths": ["课件/第一章.md", "课件/第二章.md", "坏文件.exe"],
+        },
+        files=[
+            ("files", ("第一章.md", b"# first\n\ncontent", "text/markdown")),
+            ("files", ("第二章.md", b"# second\n\ncontent", "text/markdown")),
+            ("files", ("坏文件.exe", b"invalid", "application/octet-stream")),
+        ],
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["imported_count"] == 2
+    assert body["deduplicated_count"] == 0
+    assert len(body["failures"]) == 1
+    assert body["batch_id"]
+    assert {item["source"]["relative_path"] for item in body["results"]} == {"课件/第一章.md", "课件/第二章.md"}
+    assert all(item["source"]["import_batch_id"] == body["batch_id"] for item in body["results"])
+
+    repeated = client.post(
+        f"/api/courses/{course_id}/sources/batch",
+        data={"rights_confirmed": "true"},
+        files=[("files", ("renamed.md", b"# first\n\ncontent", "text/markdown"))],
+    )
+    assert repeated.status_code == 201
+    assert repeated.json()["deduplicated_count"] == 1
+    assert repeated.json()["results"][0]["source"]["id"] == body["results"][0]["source"]["id"]
+
+
+def test_batch_requires_at_least_one_file_and_rights(client: TestClient) -> None:
+    course_id = create_course(client)
+    response = client.post(
+        f"/api/courses/{course_id}/sources/batch",
+        data={"rights_confirmed": "false"},
+        files=[("files", ("notes.md", b"text", "text/markdown"))],
+    )
+    assert response.status_code == 422

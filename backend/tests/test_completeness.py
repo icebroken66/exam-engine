@@ -19,11 +19,10 @@ def test_report_tracks_upload_parse_and_ready_states(client: TestClient, session
     course_id = create_course(client)
     source_id = upload(client, course_id, content=b"# Chapter\n\nEvidence").json()["source"]["id"]
 
-    uploaded = client.get(f"/api/courses/{course_id}/completeness").json()
-    assert uploaded["attention_sources"] == 1
-    assert uploaded["issues"][0]["code"] == "not_parsed"
+    queued = client.get(f"/api/courses/{course_id}/completeness").json()
+    assert queued["attention_sources"] == 1
+    assert queued["issues"][0]["code"] == "queued"
 
-    client.post(f"/api/sources/{source_id}/parse")
     with session_factory() as db:
         run_next_task(db, tmp_path / "uploads")
 

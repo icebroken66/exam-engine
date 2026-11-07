@@ -29,7 +29,12 @@ function stop(code = 0) {
   if (stopping) return
   stopping = true
   for (const child of children) {
-    if (!child.killed) child.kill('SIGTERM')
+    if (child.killed || !child.pid) continue
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
+    } else {
+      child.kill('SIGTERM')
+    }
   }
   setTimeout(() => process.exit(code), 250).unref()
 }

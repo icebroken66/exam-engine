@@ -1,13 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Download, FileText, Layers, LoaderCircle, Play, Plus, Sparkles, Upload, X } from 'lucide-react'
-import { explainEvidence, getCourseCompleteness, listEvidence, listSources, queueParse, uploadSource } from '../lib/api'
-import type { AgentExplanation, CourseCompleteness, EvidenceBlock, Source } from '../lib/api'
+import type { DragEvent } from 'react'
+import { Check, Download, FileText, FolderOpen, Layers, LoaderCircle, Play, Plus, Sparkles, Upload, X } from 'lucide-react'
+import { confirmSourceTranscription, explainEvidence, getCourseCompleteness, listEvidence, listSources, queueParse, updateSourceMaterial, uploadSources } from '../lib/api'
+import type { AgentExplanation, CourseCompleteness, EvidenceBlock, MaterialType, Source, SourceBatchFailure } from '../lib/api'
 import { formatFileSize, sourceStatusLabel } from '../lib/source'
+import { WebSourcePanel } from './WebSourcePanel'
 
-export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; reloadToken?: number }) {
+interface SourcePanelProps {
+  courseId: string
+  reloadToken?: number
+  onChanged?: () => void
+}
+
+const materialLabels: Record<MaterialType, string> = {
+  courseware: '课件 / 讲义',
+  past_exam: '往年题 / 试卷',
+  assignment: '作业 / 练习题',
+  teacher_guidance: '教师题型 / 考核说明',
+  notes: '笔记',
+  other: '其他课程资料',
+}
+
+export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePanelProps) {
   const [sources, setSources] = useState<Source[]>([])
   const [completeness, setCompleteness] = useState<CourseCompleteness | null>(null)
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const [uploadFailures, setUploadFailures] = useState<SourceBatchFailure[]>([])
   const [rights, setRights] = useState(false)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -19,12 +37,48 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
   const [explanations, setExplanations] = useState<Record<string, AgentExplanation>>({})
   const [explainingId, setExplainingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const totalBytes = files.reduce((total, item) => total + item.size, 0)
+
+  useEffect(() => {
+    folderInputRef.current?.setAttribute('webkitdirectory', '')
+  }, [])
+
+  function selectFiles(selected: FileList | File[]) {
+    setFiles(Array.from(selected))
+    setUploadFailures([])
+    setMessage('')
+    setError('')
+  }
+
+  function clearFiles() {
+    setFiles([])
+    if (inputRef.current) inputRef.current.value = ''
+    if (folderInputRef.current) folderInputRef.current.value = ''
+  }
+
+  function dropFiles(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    if (!working) selectFiles(event.dataTransfer.files)
+  }
+
+  async function changeMaterial(source: Source, materialType: MaterialType) {
+    setError('')
+    try {
+      const updated = await updateSourceMaterial(source.id, materialType)
+      setSources((current) => current.map((item) => item.id === updated.id ? updated : item))
+      onChanged?.()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '资料类型更新失败')
+    }
+  }
 
   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
-    setFile(null)
+    clearFiles()
+    setUploadFailures([])
     setRights(false)
     setEvidence([])
     setEvidenceSourceId(null)
@@ -54,13 +108,14 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
         if (!active) return
         setSources(items)
         setCompleteness(report)
+        if (items.every((source) => !['queued', 'running'].includes(source.status))) onChanged?.()
       }).catch(() => undefined)
     }, 700)
     return () => {
       active = false
       window.clearTimeout(timer)
     }
-  }, [courseId, hasActiveTask, sources])
+  }, [courseId, hasActiveTask, sources, onChanged])
 
   async function refreshCompleteness() {
     try {
@@ -71,18 +126,25 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
   }
 
   async function submitUpload() {
-    if (!file || !rights) return
+    if (files.length === 0 || files.length > 100 || !rights) return
     setWorking(true)
     setError('')
     setMessage('')
+    setUploadFailures([])
     try {
-      const result = await uploadSource(courseId, file)
-      setSources((current) => result.deduplicated ? current : [result.source, ...current])
-      setMessage(result.deduplicated ? '内容已存在，已复用课程中的原件。' : `已保存《${result.source.original_name}》，可以加入解析队列。`)
-      setFile(null)
+      const result = await uploadSources(courseId, files)
+      setSources(await listSources(courseId))
+      const details = [
+        `本批接收 ${result.imported_count} 份新资料`,
+        result.deduplicated_count ? `复用 ${result.deduplicated_count} 份相同内容` : '',
+        result.failures.length ? `${result.failures.length} 份未导入，不影响其他文件` : '',
+      ].filter(Boolean).join('；')
+      setMessage(`${details}。可用文件将自动解析并进入后续学习判断。`)
+      setUploadFailures(result.failures)
+      clearFiles()
       setRights(false)
-      if (inputRef.current) inputRef.current.value = ''
       await refreshCompleteness()
+      onChanged?.()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '上传失败，请重试')
     } finally {
@@ -96,10 +158,27 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
     try {
       await queueParse(source.id)
       setSources((current) => current.map((item) => item.id === source.id ? { ...item, status: 'queued' } : item))
-      setMessage(`《${source.original_name}》已加入解析队列，后台 worker 正在处理。`)
+      setMessage(`《${source.original_name}》已重新加入自动解析队列。`)
       await refreshCompleteness()
+      onChanged?.()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '加入队列失败')
+      setError(reason instanceof Error ? reason.message : '重新解析失败')
+    }
+  }
+
+  async function confirmTranscription(source: Source) {
+    setWorking(true)
+    setError('')
+    try {
+      const updated = await confirmSourceTranscription(source.id)
+      setSources((current) => current.map((item) => item.id === source.id ? updated : item))
+      setMessage(`《${source.original_name}》的转录已确认并进入课程证据。`)
+      await refreshCompleteness()
+      onChanged?.()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '转录确认失败')
+    } finally {
+      setWorking(false)
     }
   }
 
@@ -162,36 +241,85 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
         </section>
       )}
 
-      <div className="upload-composer">
+      <div className="upload-composer" onDragOver={(event) => event.preventDefault()} onDrop={dropFiles}>
         <input
           ref={inputRef}
           className="visually-hidden"
           type="file"
+          multiple
           accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg"
-          onChange={(event) => { setFile(event.target.files?.[0] ?? null); setMessage(''); setError('') }}
+          onChange={(event) => event.target.files && selectFiles(event.target.files)}
         />
-        <button className="file-picker" type="button" onClick={() => inputRef.current?.click()}>
-          <Plus size={18} />
-          <span>{file ? file.name : '选择本地资料'}</span>
-          <small>{file ? formatFileSize(file.size) : 'PDF / Office / 文本 / 图片，最大 50 MB'}</small>
-        </button>
+        <input
+          ref={folderInputRef}
+          className="visually-hidden"
+          type="file"
+          multiple
+          accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg"
+          onChange={(event) => event.target.files && selectFiles(event.target.files)}
+        />
+        <div className="file-picker-actions">
+          <button className="file-picker" type="button" onClick={() => inputRef.current?.click()} disabled={working}>
+            <Plus size={18} />
+            <span>选择多份资料</span>
+            <small>可一次多选，不必逐份等待</small>
+          </button>
+          <button className="file-picker" type="button" onClick={() => folderInputRef.current?.click()} disabled={working}>
+            <FolderOpen size={18} />
+            <span>选择整个文件夹</span>
+            <small>保留资料相对目录</small>
+          </button>
+        </div>
+        <p className="file-picker-hint">也可把多份文件拖到这里。支持 PDF / Office / 文本 / 图片；每份最大 50 MB，每批最多 100 份。</p>
+        {files.length > 0 && (
+          <>
+            <div className="selected-file-summary">
+              <span>待导入 {files.length} 份 · {formatFileSize(totalBytes)}</span>
+              <button type="button" onClick={clearFiles} disabled={working}>清空选择</button>
+            </div>
+            <ul className="selected-file-list" aria-label="本批待导入资料">
+              {files.slice(0, 12).map((item) => (
+                <li key={`${item.webkitRelativePath || item.name}-${item.size}-${item.lastModified}`}>
+                  <span title={item.webkitRelativePath || item.name}>{item.webkitRelativePath || item.name}</span>
+                  <small>{formatFileSize(item.size)}</small>
+                </li>
+              ))}
+              {files.length > 12 && <li><span>其余 {files.length - 12} 份资料将在同一批导入</span></li>}
+            </ul>
+          </>
+        )}
         <label className="rights-check">
           <input type="checkbox" checked={rights} onChange={(event) => setRights(event.target.checked)} />
-          <span>我确认有权提供并将此资料用于个人学习；默认仅用于当前课程。</span>
+          <span>我确认有权提供并将这些资料用于个人学习；本批资料默认仅归属当前课程。</span>
         </label>
-        <button className="upload-button" type="button" disabled={!file || !rights || working} onClick={submitUpload}>
+        <button className="upload-button" type="button" disabled={files.length === 0 || files.length > 100 || !rights || working} onClick={submitUpload}>
           {working ? <LoaderCircle className="spinning" size={16} /> : <Upload size={16} />}
-          {working ? '正在保存原件' : '上传并保存原件'}
+          {working ? '正在上传并安排整批解析' : files.length > 100 ? '请分批导入，每批最多 100 份' : `批量导入 ${files.length || ''} 份并自动解析`}
         </button>
       </div>
 
       {message && <p className="source-message" role="status">{message}</p>}
+      {uploadFailures.length > 0 && (
+        <ul className="upload-failures" aria-label="未导入文件">
+          {uploadFailures.map((failure) => <li key={failure.filename}><strong>{failure.filename}</strong>：{failure.message}</li>)}
+        </ul>
+      )}
       {error && <p className="source-error" role="alert">{error}</p>}
+
+      <WebSourcePanel
+        courseId={courseId}
+        hasAnchor={sources.some((source) => ['ready', 'needs_review'].includes(source.status))}
+        onImported={async () => {
+          setSources(await listSources(courseId))
+          await refreshCompleteness()
+          onChanged?.()
+        }}
+      />
 
       <div className="source-list">
         {loading && <p className="source-empty">正在读取资料清单…</p>}
         {!loading && sources.length === 0 && (
-          <div className="source-empty"><FileText size={22} /><p>还没有资料。先上传一份课件、真题或笔记。</p></div>
+          <div className="source-empty"><FileText size={22} /><p>还没有资料。可直接上传课件、真题或笔记，无需先整理或录入题目。</p></div>
         )}
         {sources.map((source) => (
           <article className="source-record" key={source.id}>
@@ -199,21 +327,34 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
             <div className="source-record-copy">
               <strong title={source.original_name}>{source.original_name}</strong>
               <small>{source.extension.slice(1).toUpperCase()} · {formatFileSize(source.size_bytes)} · SHA {source.sha256.slice(0, 8)}</small>
-              {source.origins.map((origin) => (
+              <label className="source-material-type" title={source.material_rationale}>
+                <span>资料类型{source.material_confidence < 0.8 ? '（请核对）' : ''}</span>
+                <select value={source.material_type} onChange={(event) => changeMaterial(source, event.target.value as MaterialType)} aria-label={`${source.original_name} 的资料类型`}>
+                  {Object.entries(materialLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                </select>
+              </label>
+              {source.origins.map((origin) => origin.kind === 'web' ? (
+                <small className="source-origin" key={origin.id} title={origin.path}>
+                  公开网络 · <a href={origin.path} target="_blank" rel="noreferrer">{origin.path}</a>
+                </small>
+              ) : (
                 <small className="source-origin" key={origin.id} title={`${origin.repository} · ${origin.ref} · ${origin.commit_sha} · ${origin.path}`}>
                   GitHub {origin.repository} @ {origin.commit_sha.slice(0, 8)} · {origin.path}
                 </small>
               ))}
+              {source.status === 'needs_transcription_review' && source.processing_note && (
+                <small className="source-processing-note">{source.processing_note}</small>
+              )}
             </div>
             <span className={`source-state state-${source.status}`}>{sourceStatusLabel(source.status)}</span>
             <div className="source-actions">
               <a href={`/api/sources/${source.id}/file`} title="下载原件" aria-label={`下载 ${source.original_name}`}><Download size={15} /></a>
-              {['ready', 'needs_review'].includes(source.status) && (
+              {['ready', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
                 <button type="button" onClick={() => showEvidence(source)}><Layers size={14} /> 证据</button>
               )}
-              {['uploaded', 'failed', 'needs_review'].includes(source.status) && (
-                <button type="button" onClick={() => startParse(source)} title="加入解析队列">
-                  <Play size={14} /> {source.status === 'uploaded' ? '解析' : '重试'}
+              {['failed', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
+                <button type="button" onClick={() => startParse(source)} title="重新自动解析">
+                  <Play size={14} /> 重试
                 </button>
               )}
               {['queued', 'running'].includes(source.status) && <span className="queued-mark"><Check size={14} /> 处理中</span>}
@@ -228,6 +369,16 @@ export function SourcePanel({ courseId, reloadToken = 0 }: { courseId: string; r
             <div><span className="eyebrow">SOURCE EVIDENCE</span><strong>{evidenceSource?.original_name ?? '资料证据'}</strong></div>
             <button type="button" onClick={() => setEvidenceSourceId(null)} aria-label="关闭证据"><X size={16} /></button>
           </div>
+          <a className="source-original-link" href={`/api/sources/${evidenceSourceId}/file?inline=true`} target="_blank" rel="noreferrer">打开原件对照</a>
+          {evidenceSource?.status === 'needs_transcription_review' && (
+            <>
+              <p className="source-error" role="alert">以下是视觉模型转录候选，可能遗漏公式、表格或遮挡文字。确认前不会参与范围分析或出题。</p>
+              <button className="agent-explain-button" type="button" disabled={working || evidenceLoading || evidence.length === 0} onClick={() => confirmTranscription(evidenceSource)}>
+                {working ? <LoaderCircle className="spinning" size={14} /> : <Check size={14} />}
+                {working ? '正在确认并启用' : '已对照原件，确认转录并启用'}
+              </button>
+            </>
+          )}
           {evidenceLoading && <p className="source-empty">正在读取证据…</p>}
           {!evidenceLoading && evidence.length === 0 && <p className="source-empty">暂无文本证据，请检查原件或重新解析。</p>}
           {evidence.map((block) => (

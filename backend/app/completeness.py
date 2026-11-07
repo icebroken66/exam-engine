@@ -23,6 +23,7 @@ STATUS_ISSUES = {
     "running": ("running", "资料正在解析"),
     "failed": ("parse_failed", "资料解析失败，请检查原件或重试"),
     "needs_review": ("needs_review", "资料有需要人工确认的内容"),
+    "needs_transcription_review": ("needs_transcription_review", "视觉转录尚未确认，不参与范围分析或出题"),
 }
 
 

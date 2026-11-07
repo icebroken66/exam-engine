@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class CourseCreate(BaseModel):
     school: str = Field(min_length=2, max_length=120)
     name: str = Field(min_length=2, max_length=160)
+    scope_text: str = Field(default="", max_length=2000)
     exam_date: date | None = None
 
     @field_validator("school", "name")
@@ -17,6 +18,36 @@ class CourseCreate(BaseModel):
             raise ValueError("内容过短")
         return value
 
+    @field_validator("scope_text")
+    @classmethod
+    def strip_scope(cls, value: str) -> str:
+        return value.strip()
+
+
+class CourseScopeUpdate(BaseModel):
+    scope_text: str = Field(min_length=2, max_length=2000)
+
+    @field_validator("scope_text")
+    @classmethod
+    def strip_scope(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("请填写明确的复习范围")
+        return value
+
+
+class CourseArchiveUpdate(BaseModel):
+    archived: bool
+
+
+class CourseDeleteInput(BaseModel):
+    confirmation: str = Field(min_length=2, max_length=160)
+
+    @field_validator("confirmation")
+    @classmethod
+    def strip_confirmation(cls, value: str) -> str:
+        return value.strip()
+
 
 class CourseRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -24,7 +55,10 @@ class CourseRead(BaseModel):
     id: str
     school: str
     name: str
+    scope_text: str
+    scope_source: str
     exam_date: date | None
+    archived_at: datetime | None
     created_at: datetime
 
 
@@ -46,17 +80,42 @@ class SourceOriginRead(BaseModel):
     path: str
 
 
+MaterialType = Literal["courseware", "past_exam", "assignment", "teacher_guidance", "notes", "other"]
+
+
+class MaterialClassification(BaseModel):
+    material_type: MaterialType
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = Field(min_length=2, max_length=1000)
+
+
+class VisionTranscriptionContent(BaseModel):
+    text: str = Field(default="", max_length=50_000)
+    confidence: float = Field(ge=0, le=1)
+    issues: list[str] = Field(default=[], max_length=20)
+
+
+class SourceMaterialUpdate(BaseModel):
+    material_type: MaterialType
+
+
 class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     course_id: str
+    import_batch_id: str | None
     original_name: str
+    relative_path: str
     extension: str
     media_type: str
     size_bytes: int
     sha256: str
     status: str
+    material_type: MaterialType
+    material_confidence: float
+    material_rationale: str
+    processing_note: str
     created_at: datetime
     origins: list[SourceOriginRead] = []
 
@@ -64,6 +123,68 @@ class SourceRead(BaseModel):
 class SourceUploadRead(BaseModel):
     source: SourceRead
     deduplicated: bool
+
+
+class SourceBatchFailure(BaseModel):
+    filename: str
+    message: str
+
+
+class SourceBatchUploadRead(BaseModel):
+    batch_id: str
+    results: list[SourceUploadRead]
+    failures: list[SourceBatchFailure]
+    imported_count: int
+    deduplicated_count: int
+
+
+class WebSearchInput(BaseModel):
+    query: str = Field(min_length=2, max_length=300)
+
+
+class WebSourceAssessment(BaseModel):
+    url: str
+    recommendation: Literal["recommended", "optional", "reject"]
+    confidence: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=2, max_length=1000)
+    evidence_excerpt: str = Field(min_length=2, max_length=2000)
+
+
+class WebSourceAssessments(BaseModel):
+    assessments: list[WebSourceAssessment] = Field(max_length=3)
+
+
+class WebResultRead(BaseModel):
+    title: str
+    url: str
+    snippet: str
+    assessment: WebSourceAssessment | None = None
+    read_error: str | None = None
+
+
+class WebSearchRead(BaseModel):
+    query: str
+    results: list[WebResultRead]
+
+
+class WebResearchInput(BaseModel):
+    focus: str | None = Field(default=None, max_length=1000)
+
+
+class EvidenceResearchPlan(BaseModel):
+    query: str = Field(min_length=2, max_length=300)
+    evidence_needed: str = Field(min_length=2, max_length=1000)
+    rationale: str = Field(min_length=2, max_length=1000)
+
+
+class WebResearchRead(WebSearchRead):
+    evidence_needed: str
+    rationale: str
+
+
+class WebImportInput(BaseModel):
+    url: str = Field(min_length=8, max_length=4000)
+    title: str | None = Field(default=None, max_length=300)
 
 
 class ParseTaskRead(BaseModel):
@@ -228,11 +349,49 @@ class AgentSolutionRead(BaseModel):
 
 QuestionType = Literal["single_choice", "multiple_choice", "true_false", "short_answer", "calculation", "other"]
 QuestionProvenance = Literal["original", "adapted"]
+AnswerProvenance = Literal["source", "ai", "human", "missing"]
+
+
+class ExamExtractedQuestion(BaseModel):
+    question_number: str = Field(default="", max_length=40)
+    stem: str = Field(min_length=2, max_length=10_000)
+    question_type: QuestionType
+    options: list[str] = Field(default=[], max_length=8)
+    answer: str = Field(default="", max_length=12_000)
+    analysis: str = Field(default="", max_length=12_000)
+    knowledge_points: list[str] = Field(min_length=1, max_length=8)
+    evidence_ids: list[str] = Field(min_length=1, max_length=8)
+    origin_year: int | None = Field(default=None, ge=1900, le=2100)
+    confidence: float = Field(ge=0, le=1)
+
+
+class ExamExtractionContent(BaseModel):
+    questions: list[ExamExtractedQuestion] = Field(default=[], max_length=80)
+    covered_evidence_ids: list[str] = Field(default=[], max_length=200)
+
+
+class ExamQuestionSolution(BaseModel):
+    answer: str = Field(min_length=1, max_length=12_000)
+    analysis: str = Field(min_length=1, max_length=12_000)
+    rubric: list[str] = Field(min_length=1, max_length=8)
+    confidence: float = Field(ge=0, le=1)
+
+
+class ExamValidationItem(BaseModel):
+    question_index: int = Field(ge=0)
+    is_usable: bool
+    confidence: float = Field(ge=0, le=1)
+    issues: list[str] = Field(default=[], max_length=8)
+
+
+class ExamValidationContent(BaseModel):
+    results: list[ExamValidationItem] = Field(default=[], max_length=80)
 
 
 class QuestionContentInput(BaseModel):
     stem: str = Field(min_length=2, max_length=10_000)
     question_type: QuestionType
+    options: list[str] = Field(default=[], max_length=8)
     answer: str = Field(min_length=1, max_length=12_000)
     analysis: str = Field(min_length=1, max_length=12_000)
     knowledge_points: list[str] = Field(min_length=1, max_length=8)
@@ -288,9 +447,14 @@ class QuestionEvidenceRead(BaseModel):
 class QuestionRead(BaseModel):
     id: str
     course_id: str
+    source_id: str | None
     stem: str
     question_type: QuestionType
+    options: list[str]
     answer: str
+    answer_provenance: AnswerProvenance
+    extraction_confidence: float
+    extraction_issues: list[str]
     analysis: str
     knowledge_points: list[str]
     provenance: QuestionProvenance
@@ -386,10 +550,10 @@ class UsageRecordRead(BaseModel):
 
 class CourseUsageRead(BaseModel):
     course_used_tokens: int
-    course_token_budget: int
-    course_remaining_tokens: int
+    course_token_budget: int | None
+    course_remaining_tokens: int | None
     daily_used_tokens: int
-    daily_token_budget: int
+    daily_token_budget: int | None
     provider: str
     model: str
     mocked: bool
@@ -400,6 +564,81 @@ LearningStage = Literal[
     "preparing", "diagnosing", "reviewing", "remediating", "practicing",
     "retesting", "planning", "simulating", "blocked", "completed",
 ]
+
+
+class CourseScopeContent(BaseModel):
+    scope_text: str = Field(min_length=2, max_length=2000)
+    topics: list[str] = Field(min_length=1, max_length=12)
+
+    @field_validator("topics")
+    @classmethod
+    def normalize_topics(cls, value: list[str]) -> list[str]:
+        topics = list(dict.fromkeys(topic.strip() for topic in value if topic.strip()))
+        if not topics or any(len(topic) > 120 for topic in topics):
+            raise ValueError("主题不能为空，且每项不能超过 120 字")
+        return topics
+
+
+class CourseContextRead(BaseModel):
+    course_id: str
+    preparation_status: Literal["awaiting_anchor", "assessing_materials", "ready_to_confirm", "needs_more_evidence"]
+    can_start: bool
+    knowledge_mode: Literal["course_specific", "hybrid", "general"]
+    scope_text: str
+    scope_source: Literal["course_evidence", "general_inference", "user", "awaiting_anchor"]
+    topics: list[str]
+    visible_limitation: str
+    total_sources: int
+    usable_sources: int
+    parsing_sources: int
+    failed_sources: int
+    missing_materials: list[str]
+
+
+class GeneralDiagnosticQuestion(BaseModel):
+    knowledge_point: str = Field(min_length=1, max_length=120)
+    sub_skill: str = Field(min_length=1, max_length=300)
+    cognitive_level: Literal["remember", "understand", "apply", "analyze"]
+    difficulty_prior: Literal["basic", "medium", "advanced"]
+    question_type: Literal["true_false", "short_answer"]
+    stem: str = Field(min_length=2, max_length=4000)
+    options: list[str] = Field(default=[], max_length=4)
+    answer: str = Field(min_length=1, max_length=6000)
+    analysis: str = Field(min_length=1, max_length=6000)
+
+
+class GeneralDiagnosticContent(BaseModel):
+    questions: list[GeneralDiagnosticQuestion] = Field(min_length=6, max_length=6)
+
+
+class GeneratedLearningQuestion(BaseModel):
+    knowledge_point: str = Field(min_length=2, max_length=120)
+    sub_skill: str = Field(min_length=2, max_length=300)
+    cognitive_level: Literal["remember", "understand", "apply", "analyze"]
+    difficulty_prior: Literal["basic", "medium", "advanced"]
+    question_type: Literal["true_false", "single_choice", "short_answer", "calculation"]
+    stem: str = Field(min_length=8, max_length=2000)
+    options: list[str] = Field(default=[], max_length=6)
+    answer: str = Field(min_length=1, max_length=8000)
+    rubric: list[str] = Field(min_length=1, max_length=8)
+    prerequisites: list[str] = Field(default=[], max_length=6)
+    analysis: str = Field(min_length=2, max_length=8000)
+    evidence_ids: list[str] = Field(min_length=1, max_length=5)
+
+
+class LearningQuestionValidation(BaseModel):
+    is_usable: bool
+    confidence: float = Field(ge=0, le=1)
+    issues: list[str] = Field(default=[], max_length=8)
+
+
+class LearningPlanContent(BaseModel):
+    action: Literal["diagnostic", "remediation", "practice", "retest", "complete"]
+    knowledge_point: str = Field(min_length=2, max_length=120)
+    sub_skill: str = Field(min_length=2, max_length=300)
+    cognitive_level: Literal["remember", "understand", "apply", "analyze"]
+    difficulty_prior: Literal["basic", "medium", "advanced"]
+    reason: str = Field(min_length=2, max_length=1000)
 
 
 class LearningGradeContent(BaseModel):
@@ -448,10 +687,22 @@ class LearningTaskRead(BaseModel):
     kind: Literal["diagnostic", "practice", "retest"]
     ordinal: int
     knowledge_point: str
+    sub_skill: str
+    cognitive_level: Literal["remember", "understand", "apply", "analyze"]
+    difficulty_prior: Literal["basic", "medium", "advanced"]
     question_type: QuestionType
     stem: str
     options: list[str]
     provenance: str
+    origin_question_id: str | None
+    answer_provenance: AnswerProvenance
+    source_track: Literal["course", "general"]
+    visible_limitation: str
+    rubric: list[str]
+    prerequisites: list[str]
+    validation_status: str
+    validation_confidence: float | None
+    decision_reason: str
     reference_answer: str | None
     study_answer: str | None
     analysis: str | None
@@ -464,6 +715,9 @@ class LearningPointStateRead(BaseModel):
 
     knowledge_point: str
     status: str
+    evidence_confidence: Literal["low", "medium", "high"]
+    hint_dependent: bool
+    no_progress_rounds: int
     score: float
     evidence_count: int
     last_attempt_id: str | None
@@ -484,9 +738,13 @@ class LearningSessionRead(BaseModel):
     id: str
     course_id: str
     stage: LearningStage
+    knowledge_mode: Literal["course_specific", "hybrid", "general"]
+    scope_text: str
+    visible_limitation: str
     current_task: LearningTaskRead | None
     diagnostic_total: int
     diagnostic_completed: int
+    diagnostic_target: int
     practice_completed: int
     retest_passed: int
     points: list[LearningPointStateRead]

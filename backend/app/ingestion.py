@@ -6,19 +6,23 @@ class ParseStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     NEEDS_REVIEW = "needs_review"
+    NEEDS_TRANSCRIPTION_REVIEW = "needs_transcription_review"
     READY = "ready"
     FAILED = "failed"
 
 
 ACTIVE_STATUSES = {ParseStatus.QUEUED, ParseStatus.RUNNING}
-TERMINAL_STATUSES = {ParseStatus.NEEDS_REVIEW, ParseStatus.READY, ParseStatus.FAILED}
+TERMINAL_STATUSES = {
+    ParseStatus.NEEDS_REVIEW, ParseStatus.NEEDS_TRANSCRIPTION_REVIEW, ParseStatus.READY, ParseStatus.FAILED,
+}
 
 ALLOWED_TRANSITIONS = {
     ParseStatus.UPLOADED: {ParseStatus.QUEUED},
     ParseStatus.QUEUED: {ParseStatus.RUNNING, ParseStatus.FAILED},
     ParseStatus.RUNNING: TERMINAL_STATUSES,
     ParseStatus.NEEDS_REVIEW: {ParseStatus.QUEUED},
-    ParseStatus.READY: set(),
+    ParseStatus.NEEDS_TRANSCRIPTION_REVIEW: {ParseStatus.QUEUED, ParseStatus.READY, ParseStatus.NEEDS_REVIEW},
+    ParseStatus.READY: {ParseStatus.QUEUED},
     ParseStatus.FAILED: {ParseStatus.QUEUED},
 }
 

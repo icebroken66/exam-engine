@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.model_gateway import (
-    MockProvider, ModelError, ModelGateway, OpenAIProvider, ProviderReply, TokenUsage,
+    MockProvider, ModelError, ModelGateway, OpenAIProvider, ProviderReply, TokenUsage, VisionImage,
 )
 from app.models import Course, UsageRecord
 
@@ -39,6 +39,23 @@ def test_mock_gateway_validates_json_and_records_usage(session_factory: sessionm
         assert record.estimated_cost_usd > 0
 
 
+def test_gateway_sends_exact_output_schema_to_provider(session_factory: sessionmaker) -> None:
+    class CapturingProvider(MockProvider):
+        prompt = ""
+
+        def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+            self.prompt = user_prompt
+            return super().complete(system_prompt, user_prompt, max_tokens)
+
+    provider = CapturingProvider()
+    gateway = ModelGateway(provider)
+    with session_factory() as db:
+        gateway.generate_json(db, course(db), "test", "system", "<evidence>内容</evidence>", Explanation)
+        assert '"summary"' in provider.prompt
+        assert '"key_points"' in provider.prompt
+        assert "必须使用其中定义的字段名" in provider.prompt
+
+
 def test_invalid_json_is_not_retried_and_failure_releases_reservation(session_factory: sessionmaker) -> None:
     class InvalidProvider(MockProvider):
         calls = 0
@@ -57,6 +74,38 @@ def test_invalid_json_is_not_retried_and_failure_releases_reservation(session_fa
         record = db.scalar(select(UsageRecord))
         assert record.status == "failed" and record.total_tokens == 15
         assert record.reserved_tokens == 0
+
+
+def test_legacy_positive_budget_environment_does_not_enable_local_limits(
+    session_factory: sessionmaker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "mock")
+    monkeypatch.delenv("MODEL_ENFORCE_TOKEN_BUDGET", raising=False)
+    monkeypatch.setenv("MODEL_COURSE_TOKEN_BUDGET", "20000")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_BUDGET", "200000")
+    gateway = ModelGateway.from_env()
+    assert gateway.course_token_budget is None
+    assert gateway.daily_token_budget is None
+    with session_factory() as db:
+        course_id = course(db)
+        gateway.generate_json(
+            db, course_id, "test", "system", "<evidence>内容</evidence>", Explanation,
+            max_tokens=1_000_000,
+        )
+        summary = gateway.usage_summary(db, course_id)
+        assert summary["course_remaining_tokens"] is None
+        assert summary["course_token_budget"] is None
+        assert summary["daily_token_budget"] is None
+
+
+def test_local_budget_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MODEL_PROVIDER", "mock")
+    monkeypatch.setenv("MODEL_ENFORCE_TOKEN_BUDGET", "true")
+    monkeypatch.setenv("MODEL_COURSE_TOKEN_BUDGET", "20000")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_BUDGET", "200000")
+    gateway = ModelGateway.from_env()
+    assert gateway.course_token_budget == 20000
+    assert gateway.daily_token_budget == 200000
 
 
 def test_course_budget_stops_before_another_provider_call(session_factory: sessionmaker) -> None:
@@ -137,3 +186,23 @@ def test_openai_compatible_uses_node_after_tls_connect_error(monkeypatch: pytest
     reply = provider.complete("system", "user", 100)
     assert reply.usage.total_tokens == 20
     assert json.loads(reply.content)["summary"] == "摘要"
+
+
+def test_openai_vision_uses_multimodal_content() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        content = payload["messages"][1]["content"]
+        assert content[0] == {"type": "text", "text": "transcribe"}
+        assert content[1]["text"] == "第 1 页"
+        assert content[2]["image_url"]["url"] == "data:image/jpeg;base64,aW1hZ2U="
+        assert content[2]["image_url"]["detail"] == "high"
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps({"summary": "图像", "key_points": []})}}],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 4},
+        })
+
+    provider = OpenAIProvider("test-key", "https://api.example.com/v1", "test-model", httpx.MockTransport(handler))
+    reply = provider.complete_with_images(
+        "system", "transcribe", [VisionImage(b"image", "image/jpeg", "第 1 页")], 100,
+    )
+    assert json.loads(reply.content)["summary"] == "图像"

@@ -5,6 +5,7 @@ const STATUS_LABELS: Record<SourceStatus, string> = {
   queued: '解析已排队',
   running: '正在解析',
   needs_review: '需要人工确认',
+  needs_transcription_review: '转录待确认',
   ready: '证据可用',
   failed: '解析失败',
 }

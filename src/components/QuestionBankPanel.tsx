@@ -93,6 +93,7 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
       const updated = await updateQuestion(question.id, {
         stem: draft.stem,
         question_type: draft.question_type,
+        options: question.options,
         answer: draft.answer,
         analysis: draft.analysis,
         knowledge_points: draft.knowledge_points.split(/[，,]/).map((point) => point.trim()).filter(Boolean),
@@ -157,7 +158,7 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
         <div>
           <span className="eyebrow">QUESTION BANK / HUMAN REVIEW</span>
           <h2 id="question-bank-title">先入库，再把题目校准。</h2>
-          <p>Agent 生成只是草稿。题干、答案、解析、考点与来源属性均可修订，每次修改都会留下版本。</p>
+          <p>往年卷会自动逐题入库；原卷答案与 AI 参考答案分开标识。题干、答案、解析、考点与来源属性均可修订，每次修改都会留下版本。</p>
         </div>
         <div className="question-count"><strong>{String(questions.length).padStart(2, '0')}</strong><span>结构化题目</span></div>
       </header>
@@ -167,7 +168,7 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
       {!loading && questions.length === 0 && (
         <div className="question-bank-empty">
           <FileText size={25} />
-          <p>还没有结构化题目。先在上方完成一次循证解题，再保存到课程题库。</p>
+          <p>暂无待核验的结构化题目。这里仅用于后台质量核验，不需要手动录题才能开始学习。</p>
         </div>
       )}
 
@@ -179,8 +180,9 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
               <div className="question-flags">
                 <span>{TYPE_LABELS[question.question_type]}</span>
                 <span>{question.provenance === 'original' ? '原题' : '改编题'}</span>
+                <span>{question.answer_provenance === 'source' ? '原卷答案' : question.answer_provenance === 'ai' ? 'AI 参考答案' : question.answer_provenance === 'human' ? '人工校订答案' : '答案待确认'}</span>
                 <span className={question.status === 'verified' ? 'verified-flag' : 'draft-flag'}>
-                  {question.status === 'verified' ? '已校题' : '待校题'}
+                  {question.status === 'verified' ? '已验收' : '待确认'}
                 </span>
                 <span>V{question.version}</span>
               </div>
@@ -188,13 +190,14 @@ export function QuestionBankPanel({ courseId, reloadToken = 0, onChanged }: Ques
 
             <h3>{question.stem}</h3>
             <div className="question-knowledge">{question.knowledge_points.map((point) => <span key={point}>{point}</span>)}</div>
+            {question.extraction_issues.length > 0 && <p className="question-bank-error">待确认：{question.extraction_issues.join('；')}</p>}
 
             {editingId !== question.id && (
               <>
                 <details className="question-answer-details">
                   <summary>查看答案、解析与来源</summary>
                   <div className="question-answer-copy">
-                    <strong>参考答案</strong><p>{question.answer}</p>
+                    <strong>{question.answer_provenance === 'ai' ? 'AI 参考答案（非原卷答案）' : '参考答案'}</strong><p>{question.answer || '尚未提供可靠答案'}</p>
                     <strong>解析</strong><p>{question.analysis}</p>
                     <strong>课程原文依据</strong>
                     {question.citations.map((citation) => (

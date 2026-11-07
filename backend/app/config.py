@@ -12,6 +12,9 @@ load_dotenv(PROJECT_ROOT / ".env")
 @lru_cache
 def get_data_dir() -> Path:
     path = Path(os.getenv("EXAM_ENGINE_DATA_DIR", PROJECT_ROOT / "data"))
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    path = path.resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 

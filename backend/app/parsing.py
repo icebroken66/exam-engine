@@ -243,6 +243,12 @@ def parse_pptx(source_id: str, path: Path) -> ParseOutcome:
     return finish_outcome(parser_version, nodes, blocks)
 
 
+def parse_image(source_id: str) -> ParseOutcome:
+    parser_version = "image-v1"
+    node = ParsedNode(stable_id(source_id, parser_version, "page", 1), "第 1 页", 1, 1, 1)
+    return finish_outcome(parser_version, [node], [])
+
+
 def parse_file(source_id: str, path: Path, extension: str) -> ParseOutcome:
     if extension == ".txt":
         return parse_plain_text(source_id, path)
@@ -254,4 +260,6 @@ def parse_file(source_id: str, path: Path, extension: str) -> ParseOutcome:
         return parse_docx(source_id, path)
     if extension == ".pptx":
         return parse_pptx(source_id, path)
+    if extension in {".png", ".jpg", ".jpeg"}:
+        return parse_image(source_id)
     raise ValueError(f"{extension} 的内容解析将在后续阶段支持")

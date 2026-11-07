@@ -2,14 +2,33 @@ export interface Course {
   id: string
   school: string
   name: string
+  scope_text: string
   exam_date: string | null
+  archived_at: string | null
   created_at: string
 }
 
 export interface CourseInput {
   school: string
   name: string
+  scope_text?: string
   exam_date: string | null
+}
+
+export interface CourseContext {
+  course_id: string
+  preparation_status: 'awaiting_anchor' | 'assessing_materials' | 'ready_to_confirm' | 'needs_more_evidence'
+  can_start: boolean
+  knowledge_mode: 'course_specific' | 'hybrid' | 'general'
+  scope_text: string
+  scope_source: 'user' | 'course_evidence' | 'general_inference' | 'awaiting_anchor'
+  topics: string[]
+  visible_limitation: string
+  total_sources: number
+  usable_sources: number
+  parsing_sources: number
+  failed_sources: number
+  missing_materials: string[]
 }
 
 export interface Health {
@@ -19,7 +38,8 @@ export interface Health {
   database: string
 }
 
-export type SourceStatus = 'uploaded' | 'queued' | 'running' | 'needs_review' | 'ready' | 'failed'
+export type SourceStatus = 'uploaded' | 'queued' | 'running' | 'needs_review' | 'needs_transcription_review' | 'ready' | 'failed'
+export type MaterialType = 'courseware' | 'past_exam' | 'assignment' | 'teacher_guidance' | 'notes' | 'other'
 
 export interface SourceOrigin {
   id: string
@@ -33,12 +53,18 @@ export interface SourceOrigin {
 export interface Source {
   id: string
   course_id: string
+  import_batch_id: string | null
   original_name: string
+  relative_path: string
   extension: string
   media_type: string
   size_bytes: number
   sha256: string
   status: SourceStatus
+  material_type: MaterialType
+  material_confidence: number
+  material_rationale: string
+  processing_note: string
   created_at: string
   origins: SourceOrigin[]
 }
@@ -46,6 +72,45 @@ export interface Source {
 export interface SourceUpload {
   source: Source
   deduplicated: boolean
+}
+
+export interface SourceBatchFailure {
+  filename: string
+  message: string
+}
+
+export interface SourceBatchUpload {
+  batch_id: string
+  results: SourceUpload[]
+  failures: SourceBatchFailure[]
+  imported_count: number
+  deduplicated_count: number
+}
+
+export interface WebSourceAssessment {
+  url: string
+  recommendation: 'recommended' | 'optional' | 'reject'
+  confidence: number
+  reason: string
+  evidence_excerpt: string
+}
+
+export interface WebResult {
+  title: string
+  url: string
+  snippet: string
+  assessment: WebSourceAssessment | null
+  read_error: string | null
+}
+
+export interface WebSearchResult {
+  query: string
+  results: WebResult[]
+}
+
+export interface WebResearchResult extends WebSearchResult {
+  evidence_needed: string
+  rationale: string
 }
 
 export interface ParseTask {
@@ -129,9 +194,14 @@ export type QuestionCitation = Omit<AgentCitation, 'relevance'>
 export interface CourseQuestion {
   id: string
   course_id: string
+  source_id: string | null
   stem: string
   question_type: QuestionType
+  options: string[]
   answer: string
+  answer_provenance: 'source' | 'ai' | 'human' | 'missing'
+  extraction_confidence: number
+  extraction_issues: string[]
   analysis: string
   knowledge_points: string[]
   provenance: QuestionProvenance
@@ -147,6 +217,7 @@ export interface CourseQuestion {
 export interface QuestionInput {
   stem: string
   question_type: QuestionType
+  options?: string[]
   answer: string
   analysis: string
   knowledge_points: string[]
@@ -281,10 +352,22 @@ export interface LearningTask {
   kind: 'diagnostic' | 'practice' | 'retest'
   ordinal: number
   knowledge_point: string
+  sub_skill: string
+  cognitive_level: 'remember' | 'understand' | 'apply' | 'analyze'
+  difficulty_prior: 'basic' | 'medium' | 'advanced'
   question_type: QuestionType
   stem: string
   options: string[]
   provenance: string
+  origin_question_id: string | null
+  answer_provenance: 'source' | 'ai' | 'human' | 'missing'
+  source_track: 'course' | 'general'
+  visible_limitation: string
+  rubric: string[]
+  prerequisites: string[]
+  validation_status: string
+  validation_confidence: number | null
+  decision_reason: string
   reference_answer: string | null
   study_answer: string | null
   analysis: string | null
@@ -295,6 +378,9 @@ export interface LearningTask {
 export interface LearningPointState {
   knowledge_point: string
   status: string
+  evidence_confidence: 'low' | 'medium' | 'high'
+  hint_dependent: boolean
+  no_progress_rounds: number
   score: number
   evidence_count: number
   last_attempt_id: string | null
@@ -313,9 +399,13 @@ export interface LearningSession {
   id: string
   course_id: string
   stage: LearningStage
+  knowledge_mode: 'course_specific' | 'hybrid' | 'general'
+  scope_text: string
+  visible_limitation: string
   current_task: LearningTask | null
   diagnostic_total: number
   diagnostic_completed: number
+  diagnostic_target: number
   practice_completed: number
   retest_passed: number
   points: LearningPointState[]
@@ -332,6 +422,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const body = await response.json().catch(() => null)
     throw new Error(body?.detail ?? `请求失败（${response.status}）`)
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -339,8 +430,9 @@ export function getHealth(): Promise<Health> {
   return request<Health>('/api/health')
 }
 
-export function listCourses(): Promise<Course[]> {
-  return request<Course[]>('/api/courses')
+export function listCourses(includeArchived = false): Promise<Course[]> {
+  const query = includeArchived ? '?include_archived=true' : ''
+  return request<Course[]>(`/api/courses${query}`)
 }
 
 export function createCourse(input: CourseInput): Promise<Course> {
@@ -348,6 +440,30 @@ export function createCourse(input: CourseInput): Promise<Course> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  })
+}
+
+export function updateCourseScope(courseId: string, scopeText: string): Promise<Course> {
+  return request<Course>(`/api/courses/${courseId}/scope`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scope_text: scopeText }),
+  })
+}
+
+export function archiveCourse(courseId: string, archived: boolean): Promise<Course> {
+  return request<Course>(`/api/courses/${courseId}/archive`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  })
+}
+
+export function deleteCourse(courseId: string, confirmation: string): Promise<void> {
+  return request<void>(`/api/courses/${courseId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmation }),
   })
 }
 
@@ -366,8 +482,54 @@ export function uploadSource(courseId: string, file: File): Promise<SourceUpload
   return request<SourceUpload>(`/api/courses/${courseId}/sources`, { method: 'POST', body })
 }
 
+export function uploadSources(courseId: string, files: File[]): Promise<SourceBatchUpload> {
+  const body = new FormData()
+  for (const file of files) {
+    body.append('files', file)
+    body.append('relative_paths', file.webkitRelativePath || file.name)
+  }
+  body.append('rights_confirmed', 'true')
+  return request<SourceBatchUpload>(`/api/courses/${courseId}/sources/batch`, { method: 'POST', body })
+}
+
+export function searchWebSources(courseId: string, query: string): Promise<WebSearchResult> {
+  return request<WebSearchResult>(`/api/courses/${courseId}/web/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  })
+}
+
+export function researchWebSources(courseId: string, focus?: string): Promise<WebResearchResult> {
+  return request<WebResearchResult>(`/api/courses/${courseId}/web/research`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ focus }),
+  })
+}
+
+export function importWebSource(courseId: string, url: string, title: string): Promise<SourceUpload> {
+  return request<SourceUpload>(`/api/courses/${courseId}/web/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, title }),
+  })
+}
+
+export function updateSourceMaterial(sourceId: string, materialType: MaterialType): Promise<Source> {
+  return request<Source>(`/api/sources/${sourceId}/material`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ material_type: materialType }),
+  })
+}
+
 export function queueParse(sourceId: string): Promise<ParseTask> {
   return request<ParseTask>(`/api/sources/${sourceId}/parse`, { method: 'POST' })
+}
+
+export function confirmSourceTranscription(sourceId: string): Promise<Source> {
+  return request<Source>(`/api/sources/${sourceId}/transcription-review`, { method: 'POST' })
 }
 
 export function listEvidence(sourceId: string): Promise<EvidenceBlock[]> {
@@ -440,6 +602,14 @@ export function importGithub(courseId: string, input: GitHubImportInput): Promis
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
+}
+
+export function getLearningContext(courseId: string): Promise<CourseContext> {
+  return request<CourseContext>(`/api/courses/${courseId}/learning-context`)
+}
+
+export function getCurrentLearningSession(courseId: string): Promise<LearningSession | null> {
+  return request<LearningSession | null>(`/api/courses/${courseId}/learning-sessions/current`)
 }
 
 export function startLearningSession(courseId: string, restart = false): Promise<LearningSession> {
