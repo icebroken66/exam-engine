@@ -23,11 +23,15 @@ OutputT = TypeVar("OutputT", bound=BaseModel)
 
 
 class ModelError(Exception):
-    def __init__(self, status_code: int, message: str, retryable: bool = False):
+    def __init__(
+        self, status_code: int, message: str, retryable: bool = False,
+        output_truncated: bool = False,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.message = message
         self.retryable = retryable
+        self.output_truncated = output_truncated
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ class TokenUsage:
 class ProviderReply:
     content: str
     usage: TokenUsage
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -381,15 +386,19 @@ class OpenAIProvider:
         if response.status_code >= 400:
             raise ModelError(502, f"模型服务拒绝了请求（{response.status_code}）")
         payload = response.json()
-        content = payload["choices"][0]["message"]["content"]
+        choice = payload["choices"][0]
+        content = choice["message"]["content"]
+        finish_reason = choice.get("finish_reason")
         raw_usage = payload.get("usage") or {}
         usage = TokenUsage(
             prompt_tokens=max(0, int(raw_usage.get("prompt_tokens", 0))),
             completion_tokens=max(0, int(raw_usage.get("completion_tokens", 0))),
         )
+        if finish_reason == "length":
+            return ProviderReply(content if isinstance(content, str) else "", usage, finish_reason)
         if not isinstance(content, str) or not content.strip():
-            raise ModelError(502, "模型返回了空内容")
-        return ProviderReply(content, usage)
+            raise ModelError(502, "模型返回了空内容", retryable=True)
+        return ProviderReply(content, usage, finish_reason)
 
     def _complete_with_node(self, payload: dict) -> ProviderReply:
         script = Path(__file__).resolve().parents[2] / "scripts" / "openai_chat.mjs"
@@ -553,6 +562,35 @@ class ModelGateway:
         max_tokens: int = 900,
         images: list[VisionImage] | None = None,
     ) -> tuple[OutputT, UsageRecord]:
+        for attempt in range(2):
+            try:
+                return self._generate_json_once(
+                    db, course_id, purpose, system_prompt, user_prompt,
+                    output_type, max_tokens, images,
+                )
+            except ModelError as error:
+                # Retry malformed JSON once; schema errors and exhausted transport
+                # retries keep their original boundary. Each attempt records usage
+                # and checks the budget independently.
+                if attempt or not (
+                    error.output_truncated or isinstance(error.__cause__, json.JSONDecodeError)
+                ):
+                    raise
+                if error.output_truncated:
+                    max_tokens *= 2
+        raise AssertionError("JSON retry loop must return or raise")
+
+    def _generate_json_once(
+        self,
+        db: Session,
+        course_id: str,
+        purpose: str,
+        system_prompt: str,
+        user_prompt: str,
+        output_type: type[OutputT],
+        max_tokens: int = 900,
+        images: list[VisionImage] | None = None,
+    ) -> tuple[OutputT, UsageRecord]:
         schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
         user_prompt = (
             f"{user_prompt}\n<output_json_schema>{schema}</output_json_schema>\n"
@@ -581,6 +619,7 @@ class ModelGateway:
             db.commit()
             db.refresh(record)
 
+        started_at = datetime.now(timezone.utc)
         try:
             reply = (
                 self.provider.complete_with_images(system_prompt, user_prompt, images, max_tokens)
@@ -593,6 +632,8 @@ class ModelGateway:
                 reply.usage.prompt_tokens * self.input_usd_per_million
                 + reply.usage.completion_tokens * self.output_usd_per_million
             ) / 1_000_000
+            if reply.finish_reason == "length":
+                raise ModelError(502, "模型输出达到长度上限，结构化内容可能不完整", output_truncated=True)
             try:
                 parsed = output_type.model_validate(json.loads(reply.content))
             except (json.JSONDecodeError, ValueError) as error:
@@ -600,12 +641,14 @@ class ModelGateway:
                 raise ModelError(502, f"模型返回的结构化内容未通过校验：{detail}") from error
             record.status = "succeeded"
             record.reserved_tokens = 0
+            record.duration_seconds = max(0, (datetime.now(timezone.utc) - started_at).total_seconds())
             db.commit()
             db.refresh(record)
             return parsed, record
         except Exception as error:
             record.status = "failed"
             record.reserved_tokens = 0
+            record.duration_seconds = max(0, (datetime.now(timezone.utc) - started_at).total_seconds())
             record.error = (error.message if isinstance(error, ModelError) else "模型调用失败")[:1000]
             db.commit()
             if isinstance(error, ModelError):

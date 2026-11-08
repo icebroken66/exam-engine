@@ -56,7 +56,7 @@ def search_course_evidence(
         .join(Source, EvidenceBlock.source_id == Source.id)
         .join(DocumentNode, EvidenceBlock.node_id == DocumentNode.id)
         .where(
-            Source.course_id == course_id,
+            Source.course_id == course_id, Source.removed_at.is_(None),
             Source.status.in_([ParseStatus.READY.value, ParseStatus.NEEDS_REVIEW.value]),
         )
     ).all()

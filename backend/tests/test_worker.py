@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.learning_sessions import prepare_course_context
 from app.model_gateway import ModelGateway, MockProvider, ProviderReply, TokenUsage, VisionImage
-from app.models import DocumentNode, EvidenceBlock, ParseTask, Question, Source
+from app.models import DocumentNode, EvidenceBlock, ParseTask, Question, Source, UsageRecord
 from app.worker import recover_interrupted_tasks, run_next_task
 from test_sources import create_course, upload
 
@@ -33,6 +33,10 @@ def test_worker_persists_nodes_and_evidence(client: TestClient, session_factory:
 
     source = client.get(f"/api/courses/{course_id}/sources").json()[0]
     assert source["status"] == "ready"
+    assert source["processing_stage"] == "ready"
+    assert source["processing_started_at"] is not None
+    assert source["processing_finished_at"] is not None
+    assert source["processing_duration_seconds"] >= 0
     evidence = client.get(f"/api/sources/{source_id}/evidence")
     assert evidence.status_code == 200
     assert evidence.json()[0]["node_title"] == "Chapter"
@@ -116,10 +120,19 @@ def test_worker_recovers_interrupted_task(client: TestClient, session_factory: s
         source = db.get(Source, source_id)
         task.status = "running"
         source.status = "running"
+        usage = UsageRecord(
+            course_id=course_id, purpose="exam_question_extraction", provider="test",
+            model="test-model", status="running", reserved_tokens=100,
+        )
+        db.add(usage)
         db.commit()
         assert recover_interrupted_tasks(db) == 1
         assert task.status == "queued"
         assert source.status == "queued"
+        assert source.processing_stage == "queued"
+        assert usage.status == "failed"
+        assert usage.reserved_tokens == 0
+        assert "服务重启" in usage.error
         assert run_next_task(db, tmp_path / "uploads")
         assert task.status == "ready"
 

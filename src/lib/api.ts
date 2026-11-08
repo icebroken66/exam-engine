@@ -51,6 +51,7 @@ export interface SourceOrigin {
 }
 
 export interface Source {
+  removed_at: string | null
   id: string
   course_id: string
   import_batch_id: string | null
@@ -65,6 +66,12 @@ export interface Source {
   material_confidence: number
   material_rationale: string
   processing_note: string
+  processing_stage: string
+  processing_completed: number
+  processing_total: number
+  processing_started_at: string | null
+  processing_finished_at: string | null
+  processing_duration_seconds: number
   created_at: string
   origins: SourceOrigin[]
 }
@@ -209,6 +216,8 @@ export interface CourseQuestion {
   status: 'draft' | 'verified'
   version: number
   reviewed_at: string | null
+  stem_reviewed_at: string | null
+  answer_reviewed_at: string | null
   created_at: string
   updated_at: string
   citations: QuestionCitation[]
@@ -236,6 +245,9 @@ export interface QuestionRevision {
   question_id: string
   version: number
   snapshot: {
+    reviewed_at?: string | null
+    stem_reviewed_at?: string | null
+    answer_reviewed_at?: string | null
     status: string
     answer: string
     analysis: string
@@ -345,9 +357,18 @@ export interface LearningAttempt {
   mocked: boolean
   usage_id: string | null
   created_at: string
+  review_history: {
+    id: string
+    created_at: string
+    reason: string
+    method?: 'ai' | 'human'
+    previous: { verdict: string; feedback: string }
+    revised: { verdict: string; feedback: string }
+  }[]
 }
 
 export interface LearningTask {
+  source_removed: boolean
   id: string
   kind: 'diagnostic' | 'practice' | 'retest'
   ordinal: number
@@ -396,6 +417,7 @@ export interface LearningEvent {
 }
 
 export interface LearningSession {
+  progress_version: string
   id: string
   course_id: string
   stage: LearningStage
@@ -467,12 +489,12 @@ export function deleteCourse(courseId: string, confirmation: string): Promise<vo
   })
 }
 
-export function listSources(courseId: string): Promise<Source[]> {
-  return request<Source[]>(`/api/courses/${courseId}/sources`)
+export function listSources(courseId: string, signal?: AbortSignal): Promise<Source[]> {
+  return request<Source[]>(`/api/courses/${courseId}/sources`, { signal })
 }
 
-export function getCourseCompleteness(courseId: string): Promise<CourseCompleteness> {
-  return request<CourseCompleteness>(`/api/courses/${courseId}/completeness`)
+export function getCourseCompleteness(courseId: string, signal?: AbortSignal): Promise<CourseCompleteness> {
+  return request<CourseCompleteness>(`/api/courses/${courseId}/completeness`, { signal })
 }
 
 export function uploadSource(courseId: string, file: File): Promise<SourceUpload> {
@@ -572,11 +594,11 @@ export function updateQuestion(questionId: string, input: QuestionUpdateInput): 
   })
 }
 
-export function reviewQuestion(questionId: string, expectedVersion: number): Promise<CourseQuestion> {
+export function reviewQuestion(questionId: string, expectedVersion: number, scope: 'stem' | 'answer' | 'all' = 'all'): Promise<CourseQuestion> {
   return request<CourseQuestion>(`/api/questions/${questionId}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expected_version: expectedVersion, change_note: '人工校题通过' }),
+    body: JSON.stringify({ expected_version: expectedVersion, scope }),
   })
 }
 
@@ -609,7 +631,7 @@ export function getLearningContext(courseId: string): Promise<CourseContext> {
 }
 
 export function getCurrentLearningSession(courseId: string): Promise<LearningSession | null> {
-  return request<LearningSession | null>(`/api/courses/${courseId}/learning-sessions/current`)
+  return request<LearningSession | null>(`/api/courses/${courseId}/learning-sessions/current`, { signal: AbortSignal.timeout(15000) })
 }
 
 export function startLearningSession(courseId: string, restart = false): Promise<LearningSession> {
@@ -618,21 +640,87 @@ export function startLearningSession(courseId: string, restart = false): Promise
 }
 
 export function getLearningSession(sessionId: string): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${sessionId}`)
+  return request<LearningSession>(`/api/learning-sessions/${sessionId}`, { signal: AbortSignal.timeout(15000) })
 }
 
-export function submitLearningAttempt(sessionId: string, answer: string, durationSeconds: number): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${sessionId}/attempts`, {
+export function submitLearningAttempt(session: LearningSession, answer: string, durationSeconds: number): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${session.id}/attempts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer, duration_seconds: durationSeconds }),
+    body: JSON.stringify({ answer, duration_seconds: durationSeconds, ...learningProgressInput(session) }),
   })
 }
 
-export function advanceLearningSession(sessionId: string): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${sessionId}/next`, { method: 'POST' })
+export interface LearningSessionSummary {
+  id: string
+  course_id: string
+  stage: string
+  created_at: string
+  updated_at: string
 }
 
-export function requestLearningHint(sessionId: string): Promise<{ hint: string; session: LearningSession }> {
-  return request<{ hint: string; session: LearningSession }>(`/api/learning-sessions/${sessionId}/hints`, { method: 'POST' })
+export interface LearningSessionHistory {
+  session: LearningSession
+  tasks: { task: LearningTask; attempts: LearningAttempt[] }[]
+}
+
+export function listLearningSessions(courseId: string): Promise<LearningSessionSummary[]> {
+  return request(`/api/courses/${courseId}/learning-sessions`)
+}
+
+export function getLearningHistory(sessionId: string): Promise<LearningSessionHistory> {
+  return request(`/api/learning-sessions/${sessionId}/history`)
+}
+
+export function correctLearningAttempt(sessionId: string, attempt: LearningAttempt, verdict: LearningAttempt['verdict'], reason: string): Promise<LearningSession> {
+  return request(`/api/learning-sessions/${sessionId}/attempts/${attempt.id}/correction`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verdict, reason, expected_review_count: attempt.review_history.length }),
+  })
+}
+
+export function reviewLearningAttempt(sessionId: string, attemptId: string, reason: string, expectedReviewCount = 0): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${sessionId}/attempts/${attemptId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, expected_review_count: expectedReviewCount }),
+  })
+}
+
+function learningProgressInput(session: LearningSession) {
+  return { expected_task_id: session.current_task?.id, expected_progress_version: session.progress_version }
+}
+
+export function advanceLearningSession(session: LearningSession): Promise<LearningSession> {
+  return request<LearningSession>(`/api/learning-sessions/${session.id}/next`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learningProgressInput(session)),
+  })
+}
+
+export function requestLearningHint(session: LearningSession): Promise<{ hint: string; session: LearningSession }> {
+  return request<{ hint: string; session: LearningSession }>(`/api/learning-sessions/${session.id}/hints`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learningProgressInput(session)) })
+}
+
+
+export interface SourceRemovalImpact {
+  source_id: string
+  source_name: string
+  evidence_count: number
+  question_count: number
+  history_task_count: number
+  pending_task_count: number
+  blocked_reason: string
+  signature: string
+  removed: boolean
+}
+
+export function getSourceRemovalImpact(sourceId: string): Promise<SourceRemovalImpact> {
+  return request(`/api/sources/${sourceId}/removal-impact`)
+}
+
+export function removeSource(sourceId: string, signature: string): Promise<SourceRemovalImpact> {
+  return request(`/api/sources/${sourceId}`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_signature: signature }),
+  })
 }

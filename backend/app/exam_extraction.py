@@ -307,6 +307,9 @@ def _snapshot(db: Session, question: Question) -> dict:
         "provenance": question.provenance,
         "origin_year": question.origin_year,
         "status": question.status,
+        "reviewed_at": question.reviewed_at.isoformat() if question.reviewed_at else None,
+        "stem_reviewed_at": question.stem_reviewed_at.isoformat() if question.stem_reviewed_at else None,
+        "answer_reviewed_at": question.answer_reviewed_at.isoformat() if question.answer_reviewed_at else None,
         "version": question.version,
         "evidence_ids": list(db.scalars(
             select(QuestionEvidence.evidence_id)
@@ -373,6 +376,8 @@ def _persist_question(db: Session, source: Source, item: dict) -> Question:
     question.origin_year = candidate.origin_year
     question.status = "verified" if verified else "draft"
     question.reviewed_at = None
+    question.stem_reviewed_at = None
+    question.answer_reviewed_at = None
     question.version = existing.version + 1 if existing else 1
     question.updated_at = datetime.now(timezone.utc)
     db.add(question)
@@ -392,6 +397,13 @@ def _persist_question(db: Session, source: Source, item: dict) -> Question:
     return question
 
 
+def _progress(db: Session, source: Source, stage: str, completed: int = 0, total: int = 0) -> None:
+    source.processing_stage = stage
+    source.processing_completed = completed
+    source.processing_total = total
+    db.commit()
+
+
 def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -> dict:
     blocks = list(db.scalars(
         select(EvidenceBlock)
@@ -406,6 +418,7 @@ def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -
 
     seen_keys: set[str] = set()
     for chunk in _chunks(blocks):
+        _progress(db, source, "exam_extraction")
         try:
             extracted, _ = gateway.generate_json(
                 db, source.course_id, "exam_question_extraction",
@@ -426,9 +439,12 @@ def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -
             continue
 
         items: list[dict] = []
-        for candidate in extracted.questions:
+        question_total = len(extracted.questions)
+        _progress(db, source, "exam_solving", 0, question_total)
+        for question_index, candidate in enumerate(extracted.questions, start=1):
             key = sha256(_stem_identity(candidate.stem).encode()).hexdigest()
             if key in seen_keys:
+                _progress(db, source, "exam_solving", question_index, question_total)
                 continue
             seen_keys.add(key)
             existing = db.scalar(select(Question).where(
@@ -437,6 +453,7 @@ def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -
             if existing is not None and not _can_refresh(db, existing):
                 stats["total"] += 1
                 stats[existing.status] += 1
+                _progress(db, source, "exam_solving", question_index, question_total)
                 continue
             issues, evidence_ids, answer, answer_provenance = _structural_issues(
                 candidate, source, chunk, blocks,
@@ -445,10 +462,24 @@ def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -
             if candidate.question_type not in {"single_choice", "multiple_choice", "true_false"}:
                 options = []
             if not issues:
-                answer, answer_provenance, analysis, rubric, answer_confidence, answer_issues = _solve_missing_answer(
-                    db, source, gateway, candidate, answer, answer_provenance,
-                    candidate.analysis, evidence_ids,
+                reusable_answer = (
+                    existing is not None and bool(existing.answer.strip())
+                    and existing.answer_provenance != "missing"
+                    and existing.question_type == candidate.question_type
+                    and (existing.options or []) == options
                 )
+                if reusable_answer:
+                    answer = existing.answer
+                    answer_provenance = existing.answer_provenance
+                    analysis = existing.analysis
+                    rubric = []
+                    answer_confidence = existing.extraction_confidence
+                    answer_issues = []
+                else:
+                    answer, answer_provenance, analysis, rubric, answer_confidence, answer_issues = _solve_missing_answer(
+                        db, source, gateway, candidate, answer, answer_provenance,
+                        candidate.analysis, evidence_ids,
+                    )
                 issues.extend(answer_issues)
                 if answer_provenance == "ai" and answer_confidence < 0.8:
                     issues.append("AI 参考答案置信度不足")
@@ -460,12 +491,15 @@ def extract_exam_questions(db: Session, source: Source, gateway: ModelGateway) -
                 "options": options, "answer": answer, "answer_provenance": answer_provenance,
                 "analysis": analysis, "rubric": rubric, "evidence_ids": evidence_ids, "issues": issues,
             })
+            _progress(db, source, "exam_solving", question_index, question_total)
+        _progress(db, source, "exam_validation", 0, len(items))
         validations = _validate_batch(db, source, gateway, items)
         for item in items:
             item["validation"] = validations.get(item["index"])
             question = _persist_question(db, source, item)
             stats["total"] += 1
             stats[question.status] += 1
+        _progress(db, source, "exam_validation", len(items), len(items))
         required_ids = {block.id for block in chunk}
         if not required_ids <= set(extracted.covered_evidence_ids):
             stats["errors"].append("模型未明确确认已检查本分块全部证据，请核对待确认题目")

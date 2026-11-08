@@ -95,6 +95,22 @@ class VisionTranscriptionContent(BaseModel):
     issues: list[str] = Field(default=[], max_length=20)
 
 
+class SourceRemovalInput(BaseModel):
+    expected_signature: str = Field(min_length=64, max_length=64)
+
+
+class SourceRemovalRead(BaseModel):
+    source_id: str
+    source_name: str
+    evidence_count: int
+    question_count: int
+    history_task_count: int
+    pending_task_count: int
+    blocked_reason: str
+    signature: str
+    removed: bool
+
+
 class SourceMaterialUpdate(BaseModel):
     material_type: MaterialType
 
@@ -105,6 +121,7 @@ class SourceRead(BaseModel):
     id: str
     course_id: str
     import_batch_id: str | None
+    removed_at: datetime | None
     original_name: str
     relative_path: str
     extension: str
@@ -116,6 +133,12 @@ class SourceRead(BaseModel):
     material_confidence: float
     material_rationale: str
     processing_note: str
+    processing_stage: str
+    processing_completed: int
+    processing_total: int
+    processing_started_at: datetime | None
+    processing_finished_at: datetime | None
+    processing_duration_seconds: float
     created_at: datetime
     origins: list[SourceOriginRead] = []
 
@@ -432,10 +455,12 @@ class QuestionUpdateInput(QuestionContentInput):
 
 class QuestionReviewInput(BaseModel):
     expected_version: int = Field(ge=1)
-    change_note: str = Field(default="人工校题通过", min_length=1, max_length=300)
+    scope: Literal["stem", "answer", "all"] = "all"
+    change_note: str = Field(default="", max_length=300)
 
 
 class QuestionEvidenceRead(BaseModel):
+    source_removed: bool = False
     evidence_id: str
     source_id: str
     source_name: str
@@ -462,6 +487,8 @@ class QuestionRead(BaseModel):
     status: Literal["draft", "verified"]
     version: int
     reviewed_at: datetime | None
+    stem_reviewed_at: datetime | None
+    answer_reviewed_at: datetime | None
     created_at: datetime
     updated_at: datetime
     citations: list[QuestionEvidenceRead]
@@ -544,6 +571,7 @@ class UsageRecordRead(BaseModel):
     total_tokens: int
     reserved_tokens: int
     estimated_cost_usd: float
+    duration_seconds: float
     error: str | None
     created_at: datetime
 
@@ -648,7 +676,12 @@ class LearningGradeContent(BaseModel):
     missing_points: list[str] = Field(default=[], max_length=6)
 
 
-class LearningAttemptInput(BaseModel):
+class LearningProgressInput(BaseModel):
+    expected_task_id: str | None = Field(default=None, min_length=1, max_length=36)
+    expected_progress_version: str | None = Field(default=None, min_length=64, max_length=64)
+
+
+class LearningAttemptInput(LearningProgressInput):
     answer: str = Field(min_length=1, max_length=10_000)
     duration_seconds: int = Field(default=0, ge=0, le=7200)
 
@@ -659,6 +692,23 @@ class LearningAttemptInput(BaseModel):
         if not value:
             raise ValueError("作答不能为空")
         return value
+
+
+class LearningGradeReviewInput(BaseModel):
+    reason: str = Field(min_length=2, max_length=4000)
+    expected_review_count: int = Field(default=0, ge=0)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("请填写具体的复核理由")
+        return value
+
+
+class LearningGradeCorrectionInput(LearningGradeReviewInput):
+    verdict: Literal["correct", "incorrect", "ungraded"]
 
 
 class LearningAttemptRead(BaseModel):
@@ -680,9 +730,11 @@ class LearningAttemptRead(BaseModel):
     mocked: bool
     usage_id: str | None
     created_at: datetime
+    review_history: list[dict] = Field(default_factory=list)
 
 
 class LearningTaskRead(BaseModel):
+    source_removed: bool = False
     id: str
     kind: Literal["diagnostic", "practice", "retest"]
     ordinal: int
@@ -735,6 +787,7 @@ class LearningEventRead(BaseModel):
 
 
 class LearningSessionRead(BaseModel):
+    progress_version: str
     id: str
     course_id: str
     stage: LearningStage
@@ -751,6 +804,24 @@ class LearningSessionRead(BaseModel):
     recent_events: list[LearningEventRead]
     agent_message: str
     next_action: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningTaskHistoryRead(BaseModel):
+    task: LearningTaskRead
+    attempts: list[LearningAttemptRead]
+
+
+class LearningSessionHistoryRead(BaseModel):
+    session: LearningSessionRead
+    tasks: list[LearningTaskHistoryRead]
+
+
+class LearningSessionSummaryRead(BaseModel):
+    id: str
+    course_id: str
+    stage: str
     created_at: datetime
     updated_at: datetime
 

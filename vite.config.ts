@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     proxy: {
-      '/api': 'http://127.0.0.1:8010',
+      '/api': process.env.EXAM_ENGINE_API_URL || 'http://127.0.0.1:8010',
     },
   },
 })

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .ingestion import ParseStatus
 from .models import ParseTask, Source
 from .storage import StoredUpload
+from .source_lifecycle import restore_source
 
 
 def normalized_relative_path(value: str, fallback: str) -> str:
@@ -25,7 +26,9 @@ def save_new_source(
     duplicate = db.scalar(select(Source).where(Source.course_id == course_id, Source.sha256 == stored.sha256))
     if duplicate is not None:
         stored.path.unlink(missing_ok=True)
+        restore_source(db, duplicate)
         _resume_failed_parse(db, duplicate)
+        db.commit()
         return duplicate, True
 
     source = Source(
@@ -50,10 +53,13 @@ def save_new_source(
             stored.path.unlink(missing_ok=True)
             raise
         stored.path.unlink(missing_ok=True)
+        restore_source(db, duplicate)
         _resume_failed_parse(db, duplicate)
+        db.commit()
         return duplicate, True
 
     source.status = ParseStatus.QUEUED.value
+    source.processing_stage = ParseStatus.QUEUED.value
     db.add(ParseTask(source_id=source.id, attempt=1, status=ParseStatus.QUEUED.value))
     db.commit()
     db.refresh(source)
@@ -65,5 +71,6 @@ def _resume_failed_parse(db: Session, source: Source) -> None:
         return
     attempt = (db.scalar(select(ParseTask.attempt).where(ParseTask.source_id == source.id).order_by(ParseTask.attempt.desc()).limit(1)) or 0) + 1
     source.status = ParseStatus.QUEUED.value
+    source.processing_stage = ParseStatus.QUEUED.value
     db.add(ParseTask(source_id=source.id, attempt=attempt, status=ParseStatus.QUEUED.value))
     db.commit()

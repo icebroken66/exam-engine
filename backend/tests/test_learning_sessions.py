@@ -1,14 +1,20 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from app.learning_sessions import _diagnostic_target, create_or_resume_session
+from app.learning_sessions import (
+    _diagnosed_topics, _diagnostic_target, _planner_payload, _safe_plan, _semantic_topic,
+    create_or_resume_session,
+)
 from app.main import get_model_gateway
-from app.model_gateway import ModelGateway, ModelProvider, MockProvider, ProviderReply, TokenUsage
+from app.model_gateway import ModelError, ModelGateway, ModelProvider, MockProvider, ProviderReply, TokenUsage
 from app.models import LearningAttempt, LearningPointState, LearningSession, LearningTask, Source, UsageRecord
+from app.schemas import LearningPlanContent
 from app.worker import run_next_task
 from test_agent import use_mock
 from test_questions import evidence_for_course
@@ -28,6 +34,55 @@ def test_diagnostic_target_counts_unique_topics_not_question_candidates() -> Non
     assert _diagnostic_target(candidates) == 3
     candidates.append({"knowledge_point": "数据模型"})
     assert _diagnostic_target(candidates) == 4
+
+
+def test_instruction_and_raw_formula_headings_fall_back_to_course_topic() -> None:
+    for heading in ["将其与Student自然合并，为所需结果：", "πSno，Cno (SC) ÷πCno (Course)"]:
+        assert _semantic_topic(heading, "2-2 关系代数.pdf", heading + "\n关系运算的说明") == "关系代数"
+    assert _semantic_topic("自然连接", "2-2 关系代数.pdf", "自然连接的说明") == "自然连接"
+
+
+def test_planner_counts_all_answered_semantic_topics_beyond_recent_history(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    with session_factory() as db:
+        original = db.get(LearningTask, session["current_task"]["id"])
+        original.knowledge_point = "早期主题"
+        original.status = "answered"
+        values = {column.key: getattr(original, column.key) for column in LearningTask.__table__.columns
+                  if column.key not in {"id", "created_at", "ordinal", "knowledge_point", "status"}}
+        for index in range(12):
+            db.add(LearningTask(**values, ordinal=index + 2, knowledge_point="近期主题", status="answered"))
+        for index, topic in enumerate(["将其与Student自然合并，为所需结果：", "πSno (SC) ÷πCno (Course)"]):
+            db.add(LearningTask(**values, ordinal=index + 14, knowledge_point=topic, status="answered"))
+        db.add(LearningTask(**values, ordinal=16, knowledge_point="尚未作答", status="pending"))
+        db.flush()
+        for task in db.scalars(select(LearningTask).where(LearningTask.session_id == session["id"], LearningTask.status == "answered")).all():
+            db.add(LearningAttempt(session_id=session["id"], task_id=task.id, attempt_number=1,
+                                   answer="独立作答", verdict="correct", grading_layer="deterministic",
+                                   feedback="正确", missing_points=[], hints_used=0, duration_seconds=0,
+                                   provider="deterministic", model="test", mocked=False))
+        db.commit()
+        assert _diagnosed_topics(db, session["id"]) == {"早期主题", "近期主题"}
+        payload = _planner_payload(db, db.get(LearningSession, session["id"]), [])
+        assert len(payload["recent_history"]) == 10
+        assert payload["diagnostic_completed_topics"] == 2
+        db.add(LearningPointState(session_id=session["id"], knowledge_point="将其与Student自然合并，为所需结果：", status="weak"))
+        db.commit()
+        plan = LearningPlanContent(action="complete", knowledge_point="近期主题", sub_skill="主题诊断",
+                                   cognitive_level="understand", difficulty_prior="basic", reason="覆盖充分且没有有效薄弱点")
+        candidates = [{"knowledge_point": topic} for topic in ["早期主题", "近期主题"]]
+        session_row = db.get(LearningSession, session["id"])
+        latest = LearningAttempt(verdict="correct")
+        assert _safe_plan(db, session_row, original, latest, plan, candidates).action == "complete"
+        db.add(LearningPointState(session_id=session["id"], knowledge_point="近期主题", status="weak"))
+        db.commit()
+        assert _safe_plan(db, session_row, original, latest, plan, candidates).action == "diagnostic"
+    current = client.get(f"/api/learning-sessions/{session['id']}").json()
+    assert current["diagnostic_completed"] == 2
 
 
 def start(client: TestClient, course_id: str) -> dict:
@@ -92,7 +147,7 @@ def test_anchor_generates_only_one_independently_validated_question(
     assert session["current_task"]["source_track"] == "course"
     assert session["current_task"]["validation_status"] == "validated"
     assert session["current_task"]["validation_confidence"] >= 0.8
-    assert session["current_task"]["rubric"]
+    assert session["current_task"]["rubric"] == []
     assert session["current_task"]["decision_reason"]
     assert session["current_task"]["reference_answer"] is None
     purposes = [record["purpose"] for record in client.get(f"/api/courses/{course_id}/usage").json()["records"]]
@@ -144,6 +199,233 @@ def test_dynamic_remediation_practice_and_retest_loop_is_persistent(
     assert [task.kind for task in tasks] == ["diagnostic", "practice", "retest"]
     assert len(attempts) == 3
     assert all(task.validation_status == "validated" for task in tasks)
+
+
+@pytest.mark.parametrize("correct,confidence,verdict,status", [
+    (True, 0.97, "correct", "learning"),
+    (False, 0.96, "incorrect", "weak"),
+    (True, 0.6, "ungraded", "needs_review"),
+])
+def test_grade_review_preserves_history_and_recalculates_without_extra_attempt(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+    correct: bool, confidence: float, verdict: str, status: str,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    graded = answer(client, session["id"], "不知道")
+    previous = graded["current_task"]["latest_attempt"]
+    assert previous["verdict"] == "incorrect"
+
+    class Reviewer(MockProvider):
+        def complete(self, system_prompt, user_prompt, max_tokens):
+            assert "<grade_review>" in user_prompt
+            return ProviderReply(json.dumps({
+                "is_correct": correct, "confidence": confidence,
+                "feedback": "已按题目约束重新核对等价性", "missing_points": [] if correct else ["仍有错误"],
+            }), TokenUsage(40, 20))
+
+    client.app.dependency_overrides[get_model_gateway] = lambda: ModelGateway(Reviewer())
+    response = client.post(f"/api/learning-sessions/{session['id']}/attempts/{previous['id']}/review",
+                           json={"reason": "请独立检查参考答案与我的等价解法"})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    attempt = result["current_task"]["latest_attempt"]
+    assert attempt["id"] == previous["id"] and attempt["answer"] == previous["answer"]
+    assert attempt["created_at"] == previous["created_at"] and attempt["verdict"] == verdict
+    assert attempt["review_history"][0]["previous"]["verdict"] == "incorrect"
+    assert attempt["review_history"][0]["previous"]["usage_id"] == previous["usage_id"]
+    assert attempt["review_history"][0]["revised"]["verdict"] == verdict
+    assert attempt["review_history"][0]["revised"]["usage_id"] != previous["usage_id"]
+    point = result["points"][0]
+    assert point["status"] == status
+    assert point["evidence_count"] == (0 if verdict == "ungraded" else 1)
+    assert point["no_progress_rounds"] == (1 if verdict == "incorrect" else 0)
+    with session_factory() as db:
+        assert db.query(LearningAttempt).count() == 1
+    restored = client.get(f"/api/learning-sessions/{session['id']}").json()
+    assert restored["current_task"]["latest_attempt"]["review_history"] == attempt["review_history"]
+    if verdict == "correct":
+        use_mock(client)
+        assert advance(client, session["id"])["stage"] == "retesting"
+
+
+def test_failed_grade_review_keeps_previous_grade_and_mastery(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    graded = answer(client, session["id"], "不知道")
+    attempt_id = graded["current_task"]["latest_attempt"]["id"]
+
+    class FailedReviewer(MockProvider):
+        def complete(self, *args):
+            raise ModelError(502, "复核服务暂不可用")
+
+    client.app.dependency_overrides[get_model_gateway] = lambda: ModelGateway(FailedReviewer())
+    url = f"/api/learning-sessions/{session['id']}/attempts/{attempt_id}/review"
+    assert client.post(url, json={"reason": "请检查等价解法"}).status_code == 502
+    restored = client.get(f"/api/learning-sessions/{session['id']}").json()
+    assert restored["current_task"]["latest_attempt"] == graded["current_task"]["latest_attempt"]
+    assert restored["points"] == graded["points"]
+    assert client.post(url, json={"reason": "  "}).status_code == 422
+    other = client.post(f"/api/learning-sessions/{session['id']}/attempts/other-attempt/review",
+                        json={"reason": "检查另一条记录"})
+    assert other.status_code == 409
+
+
+def test_historical_correction_replays_latest_evidence_and_reopens_completed_round(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    first = answer(client, session["id"], "不知道")
+    advance(client, session["id"])
+    practice = advance(client, session["id"])
+    answer_correct(client, session_factory, practice)
+    retest = advance(client, session["id"])
+    retested = answer_correct(client, session_factory, retest)
+    completed = advance(client, session["id"])
+    assert completed["stage"] == "completed"
+    first_attempt = first["current_task"]["latest_attempt"]
+    # Revising earlier evidence must not overwrite the later successful retest state.
+    url = f"/api/learning-sessions/{session['id']}/attempts/{first_attempt['id']}/correction"
+    revised = client.post(url, json={"verdict": "correct", "reason": "人工对照评分要求确认早期作答有效"}).json()
+    assert revised["stage"] == "completed"
+    assert revised["points"][0]["status"] == "secure_for_now"
+    assert revised["points"][0]["evidence_count"] == 3
+    assert client.post(url, json={"verdict": "incorrect", "reason": "重复提交旧版本"}).status_code == 409
+    last_attempt = retested["current_task"]["latest_attempt"]
+    url = f"/api/learning-sessions/{session['id']}/attempts/{last_attempt['id']}/correction"
+    response = client.post(url, json={"verdict": "incorrect", "reason": "人工对照原文发现重测缺少必要条件"})
+    assert response.status_code == 200, response.text
+    reopened = response.json()
+    assert reopened["stage"] == "retesting" and reopened["current_task"]["id"] == retest["current_task"]["id"]
+    assert reopened["points"][0]["status"] == "weak" and reopened["retest_passed"] == 0
+    assert reopened["points"][0]["score"] < completed["points"][0]["score"]
+    history = client.get(f"/api/learning-sessions/{session['id']}/history").json()
+    assert len(history["tasks"]) == 3
+    record = history["tasks"][-1]["attempts"][0]
+    assert record["answer"] == last_attempt["answer"] and record["grading_layer"] == "human_correction"
+    assert record["review_history"][0]["previous"]["verdict"] == "correct"
+    assert record["review_history"][0]["method"] == "human"
+    assert advance(client, session["id"])["stage"] == "remediating"
+
+
+def test_correcting_old_round_does_not_replace_current_round_or_pending_task(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    old = start(client, course_id)
+    graded = answer_correct(client, session_factory, old)
+    with session_factory() as db:
+        db.get(LearningSession, old["id"]).stage = "completed"
+        db.get(LearningSession, old["id"]).current_task_id = None
+        db.commit()
+    new_response = client.post(f"/api/courses/{course_id}/learning-sessions?restart=true")
+    assert new_response.status_code == 200, new_response.text
+    new = new_response.json()
+    attempt = graded["current_task"]["latest_attempt"]
+    response = client.post(f"/api/learning-sessions/{old['id']}/attempts/{attempt['id']}/correction",
+                           json={"verdict": "incorrect", "reason": "旧轮次错判人工纠正"})
+    assert response.status_code == 200
+    assert response.json()["id"] == old["id"] and response.json()["stage"] != "completed"
+    current = client.get(f"/api/courses/{course_id}/learning-sessions/current").json()
+    assert current["id"] == new["id"] and current["current_task"] == new["current_task"]
+    assert current["current_task"]["reference_answer"] is None and current["current_task"]["rubric"] == []
+    assert len(client.get(f"/api/courses/{course_id}/learning-sessions").json()) == 2
+    # Target ownership must be validated independently of the URL session.
+    assert client.post(f"/api/learning-sessions/{new['id']}/attempts/{attempt['id']}/correction",
+                       json={"verdict": "correct", "reason": "跨轮次错误请求"}).status_code == 409
+
+
+
+def test_historical_ai_review_keeps_newer_pending_task(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    first = answer(client, session["id"], "不知道")
+    advance(client, session["id"])
+    practice = advance(client, session["id"])
+    prior = first["current_task"]["latest_attempt"]
+
+    class Reviewer(MockProvider):
+        def complete(self, system_prompt, user_prompt, max_tokens):
+            payload = json.loads(user_prompt.split("<grade_review>", 1)[1].split("</grade_review>", 1)[0])
+            assert payload["student_answer"] == prior["answer"]
+            return ProviderReply(json.dumps({"is_correct": True, "confidence": 0.95,
+                                           "feedback": "复核后接受等价解法", "missing_points": []}), TokenUsage(40, 20))
+
+    client.app.dependency_overrides[get_model_gateway] = lambda: ModelGateway(Reviewer())
+    response = client.post(f"/api/learning-sessions/{session['id']}/attempts/{prior['id']}/review",
+                           json={"reason": "回看历史题并核对等价解法"})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["current_task"] == practice["current_task"]
+    assert result["stage"] == "practicing" and result["points"][0]["evidence_count"] == 1
+    history = client.get(f"/api/learning-sessions/{session['id']}/history").json()
+    record = history["tasks"][0]["attempts"][0]
+    assert record["answer"] == prior["answer"] and record["verdict"] == "correct"
+    assert record["review_history"][-1]["method"] == "ai"
+    assert history["tasks"][1]["task"]["study_answer"] is None
+    assert history["tasks"][1]["task"]["rubric"] == []
+
+
+def test_review_of_superseded_attempt_does_not_inflate_or_replace_latest_evidence(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    first = answer(client, session["id"], "不知道")
+    attempt_id = first["current_task"]["latest_attempt"]["id"]
+    url = f"/api/learning-sessions/{session['id']}/attempts/{attempt_id}/correction"
+    pending = client.post(url, json={"verdict": "ungraded", "reason": "原判分依据不足，需要重新作答"}).json()
+    assert pending["points"][0]["evidence_count"] == 0
+    latest = answer_correct(client, session_factory, pending)
+    assert latest["points"][0]["evidence_count"] == 1
+    corrected = client.post(url, json={"verdict": "incorrect", "reason": "补充证据后确认早期答案不正确",
+                                      "expected_review_count": 1}).json()
+    assert corrected["points"] == latest["points"] or all(
+        corrected["points"][0][key] == latest["points"][0][key]
+        for key in ["status", "score", "evidence_count", "hint_dependent"]
+    )
+    assert corrected["current_task"]["latest_attempt"] == latest["current_task"]["latest_attempt"]
+    history = client.get(f"/api/learning-sessions/{session['id']}/history").json()
+    assert len(history["tasks"][0]["attempts"]) == 2
+    assert len(history["tasks"][0]["attempts"][0]["review_history"]) == 2
+    assert client.post(f"/api/learning-sessions/{session['id']}/attempts/{attempt_id}/review",
+                       json={"reason": "不应覆盖人工判断", "expected_review_count": 2}).status_code == 409
+
+
+def test_ai_review_refreshes_session_advanced_during_model_call(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    use_mock(client)
+    course_id, _ = evidence_for_course(client, session_factory, tmp_path)
+    session = start(client, course_id)
+    graded = answer(client, session["id"], "不知道")
+    prior = graded["current_task"]["latest_attempt"]
+    # Simulate another browser advancing while the model response is in flight.
+    advanced = {}
+    class Reviewer(MockProvider):
+        def complete(self, system_prompt, user_prompt, max_tokens):
+            use_mock(client)
+            advance(client, session["id"])
+            advanced.update(advance(client, session["id"]))
+            return ProviderReply(json.dumps({"is_correct": False, "confidence": 0.95,
+                                           "feedback": "原答案仍缺乏依据", "missing_points": []}), TokenUsage(40, 20))
+    client.app.dependency_overrides[get_model_gateway] = lambda: ModelGateway(Reviewer())
+    response = client.post(f"/api/learning-sessions/{session['id']}/attempts/{prior['id']}/review",
+                           json={"reason": "检查模型等待期间的新学习进度"})
+    assert response.status_code == 200, response.text
+    assert response.json()["current_task"] == advanced["current_task"]
+    assert response.json()["stage"] == "practicing"
 
 
 def test_each_answer_replans_and_generates_at_most_one_new_task(
@@ -256,7 +538,8 @@ def test_new_material_changes_next_plan_without_rewriting_history(
     assert resumed["current_task"]["id"] == old_task["id"]
     assert resumed["current_task"]["stem"] == old_task["stem"]
     assert resumed["current_task"]["latest_attempt"]["id"] == old_attempt["id"]
-    assert any(event["kind"] == "course_context_updated" for event in resumed["recent_events"])
+    # Reading current progress is now read-only; new evidence is applied on next action.
+    assert resumed["recent_events"] == answered["recent_events"]
 
     following = advance(client, session["id"])
     assert following["current_task"]["knowledge_point"] == "关系模型"

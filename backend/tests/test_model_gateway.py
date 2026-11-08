@@ -36,6 +36,7 @@ def test_mock_gateway_validates_json_and_records_usage(session_factory: sessionm
         assert result.key_points == ["第一段", "第二段"]
         assert record.status == "succeeded"
         assert record.total_tokens > 0 and record.reserved_tokens == 0
+        assert record.duration_seconds >= 0
         assert record.estimated_cost_usd > 0
 
 
@@ -56,7 +57,7 @@ def test_gateway_sends_exact_output_schema_to_provider(session_factory: sessionm
         assert "必须使用其中定义的字段名" in provider.prompt
 
 
-def test_invalid_json_is_not_retried_and_failure_releases_reservation(session_factory: sessionmaker) -> None:
+def test_invalid_json_retries_once_and_records_both_failed_calls(session_factory: sessionmaker) -> None:
     class InvalidProvider(MockProvider):
         calls = 0
 
@@ -70,10 +71,111 @@ def test_invalid_json_is_not_retried_and_failure_releases_reservation(session_fa
         course_id = course(db)
         with pytest.raises(ModelError, match="结构化内容"):
             gateway.generate_json(db, course_id, "test", "system", "user", Explanation)
+        assert provider.calls == 2
+        records = db.scalars(select(UsageRecord)).all()
+        assert len(records) == 2
+        assert all(record.status == "failed" and record.total_tokens == 15 for record in records)
+        assert all(record.reserved_tokens == 0 and record.duration_seconds >= 0 for record in records)
+        assert gateway.usage_summary(db, course_id)["course_used_tokens"] == 30
+
+
+@pytest.mark.parametrize("with_images", [False, True])
+def test_truncated_json_recovers_with_usage_for_each_attempt(
+    session_factory: sessionmaker, with_images: bool,
+) -> None:
+    class RecoveringProvider(MockProvider):
+        calls = 0
+
+        def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+            self.calls += 1
+            content = '{"summary": "truncated' if self.calls == 1 else json.dumps({
+                "summary": "recovered", "key_points": ["verified"],
+            })
+            return ProviderReply(content, TokenUsage(10, 5))
+
+        def complete_with_images(self, system_prompt, user_prompt, images, max_tokens):
+            assert images[0].data == b"image"
+            return self.complete(system_prompt, user_prompt, max_tokens)
+
+    provider = RecoveringProvider()
+    gateway = ModelGateway(provider, input_usd_per_million=1, output_usd_per_million=2)
+    with session_factory() as db:
+        course_id = course(db)
+        result, record = gateway.generate_json(
+            db, course_id, "test", "system", "user", Explanation,
+            images=[VisionImage(b"image", "image/png", "page 1")] if with_images else None,
+        )
+        assert result.summary == "recovered" and provider.calls == 2
+        records = db.scalars(select(UsageRecord).order_by(UsageRecord.created_at)).all()
+        assert len(records) == 2
+        assert sorted(item.status for item in records) == ["failed", "succeeded"]
+        assert record.status == "succeeded" and record.error is None
+        assert all(item.reserved_tokens == 0 and item.total_tokens == 15 for item in records)
+        assert sum(item.estimated_cost_usd for item in records) == pytest.approx(0.00004)
+
+
+def test_schema_validation_failure_is_not_retried(session_factory: sessionmaker) -> None:
+    class InvalidSchemaProvider(MockProvider):
+        calls = 0
+
+        def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+            self.calls += 1
+            return ProviderReply('{"summary": "missing key_points"}', TokenUsage(10, 5))
+
+    provider = InvalidSchemaProvider()
+    gateway = ModelGateway(provider)
+    with session_factory() as db:
+        with pytest.raises(ModelError, match="结构化内容"):
+            gateway.generate_json(db, course(db), "test", "system", "user", Explanation)
         assert provider.calls == 1
         record = db.scalar(select(UsageRecord))
-        assert record.status == "failed" and record.total_tokens == 15
-        assert record.reserved_tokens == 0
+        assert record.status == "failed" and record.reserved_tokens == 0
+
+
+def test_json_retry_checks_budget_before_second_call(session_factory: sessionmaker) -> None:
+    class BudgetProvider(MockProvider):
+        calls = 0
+
+        def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+            self.calls += 1
+            return ProviderReply('{"summary": "truncated', TokenUsage(400, 50))
+
+    provider = BudgetProvider()
+    gateway = ModelGateway(provider, course_token_budget=500)
+    with session_factory() as db:
+        with pytest.raises(ModelError, match="预算不足"):
+            gateway.generate_json(db, course(db), "test", "system", "user", Explanation, max_tokens=50)
+        assert provider.calls == 1
+        records = db.scalars(select(UsageRecord)).all()
+        assert len(records) == 1 and records[0].reserved_tokens == 0
+
+
+@pytest.mark.parametrize("truncated_content", [None, '{"summary": "partial', '{"summary":"valid","key_points":[]}'])
+def test_length_limited_response_retries_with_larger_limit_and_records_usage(
+    session_factory: sessionmaker, truncated_content: str | None,
+) -> None:
+    limits = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        limits.append(json.loads(request.content)["max_tokens"])
+        return httpx.Response(200, json={
+            "choices": [{
+                "message": {"content": truncated_content if len(limits) == 1 else '{"summary":"complete","key_points":[]}'},
+                "finish_reason": "length" if len(limits) == 1 else "stop",
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 100 if len(limits) == 1 else 20},
+        })
+
+    gateway = ModelGateway(OpenAIProvider(
+        "test-key", "https://api.example.com/v1", "test-model", httpx.MockTransport(handler),
+    ))
+    with session_factory() as db:
+        result, _ = gateway.generate_json(db, course(db), "test", "system", "user", Explanation, max_tokens=100)
+        assert result.summary == "complete" and limits == [100, 200]
+        records = db.scalars(select(UsageRecord)).all()
+        assert len(records) == 2 and sum(item.total_tokens for item in records) == 140
+        assert all(item.reserved_tokens == 0 for item in records)
+        assert any(item.status == "failed" and "长度上限" in item.error for item in records)
 
 
 def test_legacy_positive_budget_environment_does_not_enable_local_limits(
@@ -145,6 +247,24 @@ def test_openai_compatible_retries_only_transient_failure() -> None:
     reply = provider.complete("system", "user", 100)
     assert calls == 2
     assert reply.usage.total_tokens == 20
+    assert json.loads(reply.content)["summary"] == "摘要"
+
+
+def test_openai_compatible_retries_empty_response() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        content = "" if calls == 1 else json.dumps({"summary": "摘要", "key_points": ["重点"]})
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 8},
+        })
+
+    provider = OpenAIProvider("test-key", "https://api.example.com/v1", "test-model", httpx.MockTransport(handler))
+    reply = provider.complete("system", "user", 100)
+    assert calls == 2
     assert json.loads(reply.content)["summary"] == "摘要"
 
 

@@ -20,7 +20,7 @@ from .github import GitHubError, GitHubPreview, GitHubService
 from .ingestion import ParseStatus, assert_transition
 from .learning_sessions import (
     LearningSessionError, advance_session, create_or_resume_session, prepare_course_context,
-    read_learning_session, request_hint, submit_attempt,
+    correct_attempt, read_learning_session, read_session_history, request_hint, review_current_attempt, submit_attempt,
 )
 from .model_gateway import ModelError, ModelGateway
 from .models import (
@@ -36,11 +36,14 @@ from .schemas import (
     CourseCreate, CourseDeleteInput, CourseRead, CourseScopeUpdate, CourseUsageRead,
     DocumentNodeRead, EvidenceBlockRead, EvidenceResearchPlan,
     GitHubImportInput, GitHubImportRead, GitHubLocationInput, GitHubPreviewRead,
-    HealthRead, KnowledgePointRead, LearningAttemptInput, LearningHintRead, LearningSessionRead,
+    HealthRead, KnowledgePointRead, LearningAttemptInput, LearningGradeCorrectionInput, LearningGradeReviewInput,
+    LearningProgressInput, LearningHintRead, LearningSessionHistoryRead, LearningSessionSummaryRead, LearningSessionRead,
     ParseTaskRead, QuestionCreateInput, QuestionRead, QuestionReviewInput,
     QuestionRevisionRead, QuestionUpdateInput, SourceBatchUploadRead, SourceMaterialUpdate, SourceOriginRead, SourceRead, SourceUploadRead,
+    SourceRemovalInput, SourceRemovalRead,
     WebImportInput, WebResearchInput, WebResearchRead, WebSearchInput, WebSearchRead,
 )
+from .source_lifecycle import active_question, removal_impact, restore_source, task_uses_removed_source
 from .source_imports import save_new_source
 from .source_research import assess_candidates
 from .storage import StoredUpload, persist_bytes, persist_upload
@@ -74,6 +77,7 @@ def validate_question_evidence(db: Session, course_id: str, evidence_ids: list[s
             EvidenceBlock.id.in_(evidence_ids),
             Source.course_id == course_id,
             Source.status.in_([ParseStatus.READY.value, ParseStatus.NEEDS_REVIEW.value]),
+            Source.removed_at.is_(None),
         )
     ).all()
     if len({row[0] for row in rows}) != len(evidence_ids):
@@ -99,6 +103,9 @@ def question_snapshot(db: Session, question: Question) -> dict:
         "provenance": question.provenance,
         "origin_year": question.origin_year,
         "status": question.status,
+        "reviewed_at": question.reviewed_at.isoformat() if question.reviewed_at else None,
+        "stem_reviewed_at": question.stem_reviewed_at.isoformat() if question.stem_reviewed_at else None,
+        "answer_reviewed_at": question.answer_reviewed_at.isoformat() if question.answer_reviewed_at else None,
         "version": question.version,
         "evidence_ids": evidence_ids,
     }
@@ -143,6 +150,12 @@ def enqueue_parse(db: Session, source: Source) -> ParseTask:
     ) or 0) + 1
     task = ParseTask(source_id=source.id, attempt=attempt, status=ParseStatus.QUEUED.value)
     source.status = ParseStatus.QUEUED.value
+    source.processing_stage = ParseStatus.QUEUED.value
+    source.processing_completed = 0
+    source.processing_total = 0
+    source.processing_started_at = None
+    source.processing_finished_at = None
+    source.processing_duration_seconds = 0
     db.add(task)
     return task
 
@@ -158,6 +171,8 @@ def save_github_source(
     if duplicate is not None:
         stored.path.unlink(missing_ok=True)
         source = duplicate
+        restore_source(db, source)
+        db.commit()
         deduplicated = True
     else:
         source = Source(
@@ -181,6 +196,8 @@ def save_github_source(
                 raise
             stored.path.unlink(missing_ok=True)
             source = duplicate
+            restore_source(db, source)
+            db.commit()
             deduplicated = True
         except Exception:
             stored.path.unlink(missing_ok=True)
@@ -334,9 +351,53 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if db.get(Course, course_id) is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         sources = list(db.scalars(
-            select(Source).where(Source.course_id == course_id).order_by(Source.created_at.desc())
+            select(Source).where(Source.course_id == course_id, Source.removed_at.is_(None)).order_by(Source.created_at.desc())
         ).all())
         return [read_source(db, source) for source in sources]
+
+    @app.get("/api/sources/{source_id}/removal-impact", response_model=SourceRemovalRead, tags=["sources"])
+    def source_removal_impact(source_id: str, db: Session = Depends(get_db)) -> dict:
+        source = db.get(Source, source_id)
+        if source is None:
+            raise HTTPException(status_code=404, detail="资料不存在")
+        return removal_impact(db, source)
+
+    @app.delete("/api/sources/{source_id}", response_model=SourceRemovalRead, tags=["sources"])
+    def remove_source(source_id: str, payload: SourceRemovalInput, db: Session = Depends(get_db)) -> dict:
+        # Serialize with the worker's claim on SQLite before checking actual state.
+        if db.get_bind().dialect.name == "sqlite":
+            db.execute(text("BEGIN IMMEDIATE"))
+        source = db.get(Source, source_id)
+        if source is None:
+            raise HTTPException(status_code=404, detail="资料不存在")
+        impact = removal_impact(db, source)
+        if impact["removed"]:
+            return impact
+        if impact["blocked_reason"]:
+            raise HTTPException(status_code=409, detail=impact["blocked_reason"])
+        if payload.expected_signature != impact["signature"]:
+            raise HTTPException(status_code=409, detail="资料关联内容已变化，请重新查看移除影响后确认")
+        source.removed_at = datetime.now(timezone.utc)
+        db.query(ParseTask).filter(ParseTask.source_id == source.id, ParseTask.status == "queued").update(
+            {"status": "failed", "error": "资料已从课程移除，未执行解析"}, synchronize_session=False,
+        )
+        course = db.get(Course, source.course_id)
+        if course.scope_source != "user":
+            course.scope_text = ""
+            course.scope_topics = []
+            course.scope_signature = ""
+        db.flush()
+        for session in db.scalars(select(LearningSession).where(LearningSession.course_id == source.course_id)).all():
+            task = db.get(LearningTask, session.current_task_id) if session.current_task_id else None
+            if task and session.stage != "completed" and task_uses_removed_source(db, task):
+                latest = db.scalar(select(LearningAttempt).where(LearningAttempt.task_id == task.id).order_by(LearningAttempt.created_at.desc()).limit(1))
+                if latest is None or latest.verdict == "ungraded":
+                    task.status = "withdrawn"
+                    session.stage = "blocked"
+            db.add(LearningEvent(session_id=session.id, task_id=task.id if task else None,
+                kind="source_removed", payload={"source_id": source.id, "source_name": source.original_name}))
+        db.commit()
+        return removal_impact(db, source)
 
     @app.patch("/api/sources/{source_id}/material", response_model=SourceRead, tags=["sources"])
     def update_source_material(
@@ -345,7 +406,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         db: Session = Depends(get_db),
     ) -> SourceRead:
         source = db.get(Source, source_id)
-        if source is None:
+        if source is None or source.removed_at is not None:
             raise HTTPException(status_code=404, detail="资料不存在")
         extraction_needed = source.material_type != payload.material_type and payload.material_type == "past_exam"
         source.material_type = payload.material_type
@@ -562,6 +623,8 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if duplicate is not None:
             stored.path.unlink(missing_ok=True)
             response.status_code = status.HTTP_200_OK
+            restore_source(db, duplicate)
+            db.commit()
             if duplicate.status in {ParseStatus.UPLOADED.value, ParseStatus.FAILED.value}:
                 enqueue_parse(db, duplicate)
                 db.commit()
@@ -589,6 +652,8 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
             if duplicate is None:
                 raise
             response.status_code = status.HTTP_200_OK
+            restore_source(db, duplicate)
+            db.commit()
             if duplicate.status in {ParseStatus.UPLOADED.value, ParseStatus.FAILED.value}:
                 enqueue_parse(db, duplicate)
                 db.commit()
@@ -687,7 +752,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         gateway: ModelGateway = Depends(get_model_gateway),
     ) -> Source:
         source = db.get(Source, source_id)
-        if source is None:
+        if source is None or source.removed_at is not None:
             raise HTTPException(status_code=404, detail="资料不存在")
         if source.status != ParseStatus.NEEDS_TRANSCRIPTION_REVIEW.value:
             raise HTTPException(status_code=409, detail="这份资料不在视觉转录确认状态")
@@ -720,7 +785,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
     )
     def queue_parse(source_id: str, db: Session = Depends(get_db)) -> ParseTask:
         source = db.get(Source, source_id)
-        if source is None:
+        if source is None or source.removed_at is not None:
             raise HTTPException(status_code=404, detail="资料不存在")
         try:
             assert_transition(ParseStatus(source.status), ParseStatus.QUEUED)
@@ -795,7 +860,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         row = db.execute(
             select(EvidenceBlock, Source)
             .join(Source, EvidenceBlock.source_id == Source.id)
-            .where(EvidenceBlock.id == payload.evidence_id, Source.course_id == course_id)
+            .where(EvidenceBlock.id == payload.evidence_id, Source.course_id == course_id, Source.removed_at.is_(None))
         ).first()
         if row is None:
             raise HTTPException(status_code=404, detail="当前课程中不存在这份证据")
@@ -853,6 +918,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
                 .where(
                     Source.course_id == course_id,
                     Source.status.in_([ParseStatus.READY.value, ParseStatus.NEEDS_REVIEW.value]),
+            Source.removed_at.is_(None),
                 )
                 .limit(1)
             )
@@ -944,7 +1010,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if db.get(Course, course_id) is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         questions = list(db.scalars(
-            select(Question).where(Question.course_id == course_id).order_by(Question.updated_at.desc())
+            select(Question).where(Question.course_id == course_id, active_question()).order_by(Question.updated_at.desc())
         ).all())
         return [read_question(db, question) for question in questions]
 
@@ -957,15 +1023,20 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         question = db.get(Question, question_id)
         if question is None:
             raise HTTPException(status_code=404, detail="题目不存在")
+        if db.scalar(select(Question.id).where(Question.id == question.id, active_question())) is None:
+            raise HTTPException(status_code=409, detail="题目引用的资料已移除，仅保留历史记录；重新上传资料后可恢复校题")
         if question.version != payload.expected_version:
             raise HTTPException(status_code=409, detail="题目已被更新，请刷新后再提交校题修改")
         validate_question_evidence(db, question.course_id, payload.evidence_ids)
+        answer_changed = payload.answer.strip() != question.answer.strip()
         for key, value in payload.model_dump(exclude={"expected_version", "change_note", "evidence_ids"}).items():
             setattr(question, key, value)
-        if question.answer_provenance == "missing" and question.answer.strip():
+        if (answer_changed or question.answer_provenance == "missing") and question.answer.strip():
             question.answer_provenance = "human"
         question.status = "draft"
         question.reviewed_at = None
+        question.stem_reviewed_at = None
+        question.answer_reviewed_at = None
         question.version += 1
         db.query(QuestionEvidence).filter(QuestionEvidence.question_id == question.id).delete()
         for ordinal, evidence_id in enumerate(payload.evidence_ids):
@@ -990,18 +1061,26 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         question = db.get(Question, question_id)
         if question is None:
             raise HTTPException(status_code=404, detail="题目不存在")
+        if db.scalar(select(Question.id).where(Question.id == question.id, active_question())) is None:
+            raise HTTPException(status_code=409, detail="题目引用的资料已移除，仅保留历史记录；重新上传资料后可恢复校题")
         if question.version != payload.expected_version:
             raise HTTPException(status_code=409, detail="题目版本已变化，请重新检查后再审核")
-        if not question.answer.strip() or question.answer_provenance == "missing":
-            raise HTTPException(status_code=422, detail="请先补充并核对参考答案，再发布这道原题")
-        question.status = "verified"
-        question.reviewed_at = datetime.now(timezone.utc)
+        if payload.scope in {"answer", "all"} and (not question.answer.strip() or question.answer_provenance == "missing"):
+            raise HTTPException(status_code=422, detail="请先补充并核对参考答案，再确认答案")
+        now = datetime.now(timezone.utc)
+        if payload.scope in {"stem", "all"}:
+            question.stem_reviewed_at = now
+        if payload.scope in {"answer", "all"}:
+            question.answer_reviewed_at = now
+        if question.stem_reviewed_at and question.answer_reviewed_at:
+            question.status = "verified"
+            question.reviewed_at = now
         question.version += 1
         db.add(QuestionRevision(
             question_id=question.id,
             version=question.version,
             snapshot=question_snapshot(db, question),
-            change_note=payload.change_note.strip(),
+            change_note=payload.change_note.strip() or {"stem": "人工确认题干与选项", "answer": "人工确认答案与解析", "all": "人工校题通过"}[payload.scope],
         ))
         db.commit()
         return read_question(db, question)
@@ -1092,20 +1171,19 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
     def get_current_learning_session(
         course_id: str,
         db: Session = Depends(get_db),
-        gateway: ModelGateway = Depends(get_model_gateway),
     ) -> dict | None:
         if db.get(Course, course_id) is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         session = db.scalar(
             select(LearningSession)
             .where(LearningSession.course_id == course_id)
-            .order_by(LearningSession.updated_at.desc())
+            .order_by(LearningSession.created_at.desc(), LearningSession.id)
             .limit(1)
         )
         if session is None:
             return None
         try:
-            return create_or_resume_session(db, course_id, gateway=gateway)
+            return read_learning_session(db, session.id)
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
@@ -1132,6 +1210,20 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
+    @app.get("/api/courses/{course_id}/learning-sessions", response_model=list[LearningSessionSummaryRead], tags=["learning"])
+    def list_learning_sessions(course_id: str, db: Session = Depends(get_db)) -> list:
+        if db.get(Course, course_id) is None:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        return list(db.scalars(select(LearningSession).where(LearningSession.course_id == course_id)
+                               .order_by(LearningSession.created_at.desc(), LearningSession.id)).all())
+
+    @app.get("/api/learning-sessions/{session_id}/history", response_model=LearningSessionHistoryRead, tags=["learning"])
+    def get_learning_history(session_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return read_session_history(db, session_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
     @app.post("/api/learning-sessions/{session_id}/attempts", response_model=LearningSessionRead, tags=["learning"])
     def create_learning_attempt(
         session_id: str,
@@ -1140,25 +1232,45 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         gateway: ModelGateway = Depends(get_model_gateway),
     ) -> dict:
         try:
-            return submit_attempt(db, session_id, payload.answer, payload.duration_seconds, gateway)
+            return submit_attempt(db, session_id, payload.answer, payload.duration_seconds, gateway, payload.expected_task_id, payload.expected_progress_version)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/attempts/{attempt_id}/review", response_model=LearningSessionRead, tags=["learning"])
+    def review_learning_attempt(
+        session_id: str, attempt_id: str, payload: LearningGradeReviewInput,
+        db: Session = Depends(get_db), gateway: ModelGateway = Depends(get_model_gateway),
+    ) -> dict:
+        try:
+            return review_current_attempt(db, session_id, attempt_id, payload.reason, gateway, payload.expected_review_count)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/attempts/{attempt_id}/correction", response_model=LearningSessionRead, tags=["learning"])
+    def correct_learning_attempt(
+        session_id: str, attempt_id: str, payload: LearningGradeCorrectionInput, db: Session = Depends(get_db),
+    ) -> dict:
+        try:
+            return correct_attempt(db, session_id, attempt_id, payload.verdict, payload.reason, payload.expected_review_count)
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
     @app.post("/api/learning-sessions/{session_id}/next", response_model=LearningSessionRead, tags=["learning"])
     def next_learning_action(
         session_id: str,
+        payload: LearningProgressInput | None = None,
         db: Session = Depends(get_db),
         gateway: ModelGateway = Depends(get_model_gateway),
     ) -> dict:
         try:
-            return advance_session(db, session_id, gateway)
+            return advance_session(db, session_id, gateway, payload.expected_task_id if payload else None, payload.expected_progress_version if payload else None)
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
     @app.post("/api/learning-sessions/{session_id}/hints", response_model=LearningHintRead, tags=["learning"])
-    def create_learning_hint(session_id: str, db: Session = Depends(get_db)) -> dict:
+    def create_learning_hint(session_id: str, payload: LearningProgressInput | None = None, db: Session = Depends(get_db)) -> dict:
         try:
-            return request_hint(db, session_id)
+            return request_hint(db, session_id, payload.expected_task_id if payload else None, payload.expected_progress_version if payload else None)
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 

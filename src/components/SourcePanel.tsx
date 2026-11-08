@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { Check, Download, FileText, FolderOpen, Layers, LoaderCircle, Play, Plus, Sparkles, Upload, X } from 'lucide-react'
-import { confirmSourceTranscription, explainEvidence, getCourseCompleteness, listEvidence, listSources, queueParse, updateSourceMaterial, uploadSources } from '../lib/api'
-import type { AgentExplanation, CourseCompleteness, EvidenceBlock, MaterialType, Source, SourceBatchFailure } from '../lib/api'
-import { formatFileSize, sourceStatusLabel } from '../lib/source'
+import { Check, Download, FileText, FolderOpen, Layers, LoaderCircle, Play, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { confirmSourceTranscription, explainEvidence, listEvidence, queueParse, updateSourceMaterial, uploadSources } from '../lib/api'
+import type { AgentExplanation, EvidenceBlock, MaterialType, Source, SourceBatchFailure } from '../lib/api'
+import { formatFileSize, formatProcessingDuration, sourceProcessingLabel, sourceStatusLabel } from '../lib/source'
 import { WebSourcePanel } from './WebSourcePanel'
+import { SourceRemovalDialog } from './SourceRemovalDialog'
+import { SourceProgress } from './SourceProgress'
+import type { CourseSourcesState } from '../lib/useCourseSources'
 
 interface SourcePanelProps {
   courseId: string
-  reloadToken?: number
-  onChanged?: () => void
+  state: CourseSourcesState
 }
 
 const materialLabels: Record<MaterialType, string> = {
@@ -21,14 +23,14 @@ const materialLabels: Record<MaterialType, string> = {
   other: '其他课程资料',
 }
 
-export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePanelProps) {
-  const [sources, setSources] = useState<Source[]>([])
-  const [completeness, setCompleteness] = useState<CourseCompleteness | null>(null)
+export function SourcePanel({ courseId, state }: SourcePanelProps) {
+  const { sources, completeness, loading, refresh } = state
   const [files, setFiles] = useState<File[]>([])
   const [uploadFailures, setUploadFailures] = useState<SourceBatchFailure[]>([])
   const [rights, setRights] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [actionId, setActionId] = useState('')
+  const [removing, setRemoving] = useState<Source | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [evidence, setEvidence] = useState<EvidenceBlock[]>([])
@@ -65,63 +67,10 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
   async function changeMaterial(source: Source, materialType: MaterialType) {
     setError('')
     try {
-      const updated = await updateSourceMaterial(source.id, materialType)
-      setSources((current) => current.map((item) => item.id === updated.id ? updated : item))
-      onChanged?.()
+      await updateSourceMaterial(source.id, materialType)
+      await refresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '资料类型更新失败')
-    }
-  }
-
-  useEffect(() => {
-    let active = true
-    setLoading(true)
-    setError('')
-    clearFiles()
-    setUploadFailures([])
-    setRights(false)
-    setEvidence([])
-    setEvidenceSourceId(null)
-    setExplanations({})
-    setCompleteness(null)
-    listSources(courseId).then((items) => {
-      if (active) setSources(items)
-    }).catch((reason) => {
-      if (active) setError(reason instanceof Error ? reason.message : '资料读取失败')
-    }).finally(() => {
-      if (active) setLoading(false)
-    })
-    getCourseCompleteness(courseId).then((report) => {
-      if (active) setCompleteness(report)
-    }).catch(() => {
-      if (active) setError('课程完整性报告暂时无法读取')
-    })
-    return () => { active = false }
-  }, [courseId, reloadToken])
-
-  const hasActiveTask = sources.some((source) => ['queued', 'running'].includes(source.status))
-  useEffect(() => {
-    if (!hasActiveTask) return
-    let active = true
-    const timer = window.setTimeout(() => {
-      Promise.all([listSources(courseId), getCourseCompleteness(courseId)]).then(([items, report]) => {
-        if (!active) return
-        setSources(items)
-        setCompleteness(report)
-        if (items.every((source) => !['queued', 'running'].includes(source.status))) onChanged?.()
-      }).catch(() => undefined)
-    }, 700)
-    return () => {
-      active = false
-      window.clearTimeout(timer)
-    }
-  }, [courseId, hasActiveTask, sources, onChanged])
-
-  async function refreshCompleteness() {
-    try {
-      setCompleteness(await getCourseCompleteness(courseId))
-    } catch {
-      setError('资料已更新，但课程完整性报告暂时无法刷新')
     }
   }
 
@@ -133,7 +82,6 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
     setUploadFailures([])
     try {
       const result = await uploadSources(courseId, files)
-      setSources(await listSources(courseId))
       const details = [
         `本批接收 ${result.imported_count} 份新资料`,
         result.deduplicated_count ? `复用 ${result.deduplicated_count} 份相同内容` : '',
@@ -141,10 +89,11 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
       ].filter(Boolean).join('；')
       setMessage(`${details}。可用文件将自动解析并进入后续学习判断。`)
       setUploadFailures(result.failures)
-      clearFiles()
-      setRights(false)
-      await refreshCompleteness()
-      onChanged?.()
+      const failedNames = new Set(result.failures.map(failure => failure.filename))
+      const remaining = files.filter(file => failedNames.has(file.webkitRelativePath || file.name) || failedNames.has(file.name))
+      if (remaining.length) setFiles(remaining)
+      else { clearFiles(); setRights(false) }
+      await refresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '上传失败，请重试')
     } finally {
@@ -155,26 +104,23 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
   async function startParse(source: Source) {
     setError('')
     setMessage('')
+    setActionId(source.id)
     try {
       await queueParse(source.id)
-      setSources((current) => current.map((item) => item.id === source.id ? { ...item, status: 'queued' } : item))
       setMessage(`《${source.original_name}》已重新加入自动解析队列。`)
-      await refreshCompleteness()
-      onChanged?.()
+      await refresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '重新解析失败')
-    }
+    } finally { setActionId('') }
   }
 
   async function confirmTranscription(source: Source) {
     setWorking(true)
     setError('')
     try {
-      const updated = await confirmSourceTranscription(source.id)
-      setSources((current) => current.map((item) => item.id === source.id ? updated : item))
+      await confirmSourceTranscription(source.id)
       setMessage(`《${source.original_name}》的转录已确认并进入课程证据。`)
-      await refreshCompleteness()
-      onChanged?.()
+      await refresh()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '转录确认失败')
     } finally {
@@ -212,12 +158,13 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
 
   return (
     <div className="source-panel">
-      <div className="section-heading"><span>课程资料清单</span><span>{String(sources.length).padStart(2, '0')} FILES</span></div>
+      <div className="section-heading"><span>课程资料清单</span><span>{sources.length} 份资料</span></div>
+      <SourceProgress state={state} />
 
       {completeness && (
         <section className="completeness-ledger" aria-label="课程资料完整性">
           <div className="completeness-heading">
-            <strong>{completeness.complete ? '资料解析完整' : `${completeness.attention_sources} 份资料需要关注`}</strong>
+            <strong>{completeness.total_sources === 0 ? '等待提供课程资料' : completeness.complete ? '资料解析完整' : `${completeness.attention_sources} 份资料需要关注`}</strong>
             <span>解析完整性 / 非考点覆盖率</span>
           </div>
           <dl className="completeness-stats">
@@ -289,7 +236,7 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
           </>
         )}
         <label className="rights-check">
-          <input type="checkbox" checked={rights} onChange={(event) => setRights(event.target.checked)} />
+          <input type="checkbox" checked={rights} disabled={working} onChange={(event) => setRights(event.target.checked)} />
           <span>我确认有权提供并将这些资料用于个人学习；本批资料默认仅归属当前课程。</span>
         </label>
         <button className="upload-button" type="button" disabled={files.length === 0 || files.length > 100 || !rights || working} onClick={submitUpload}>
@@ -309,11 +256,7 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
       <WebSourcePanel
         courseId={courseId}
         hasAnchor={sources.some((source) => ['ready', 'needs_review'].includes(source.status))}
-        onImported={async () => {
-          setSources(await listSources(courseId))
-          await refreshCompleteness()
-          onChanged?.()
-        }}
+        onImported={() => { void refresh() }}
       />
 
       <div className="source-list">
@@ -342,27 +285,37 @@ export function SourcePanel({ courseId, reloadToken = 0, onChanged }: SourcePane
                   GitHub {origin.repository} @ {origin.commit_sha.slice(0, 8)} · {origin.path}
                 </small>
               ))}
-              {source.status === 'needs_transcription_review' && source.processing_note && (
+              {source.processing_note && !['queued', 'running'].includes(source.status) && (
                 <small className="source-processing-note">{source.processing_note}</small>
+              )}
+              {!['queued', 'running'].includes(source.status) && source.processing_duration_seconds > 0 && (
+                <small className="source-origin">最近处理耗时 {formatProcessingDuration(source.processing_duration_seconds)}</small>
               )}
             </div>
             <span className={`source-state state-${source.status}`}>{sourceStatusLabel(source.status)}</span>
             <div className="source-actions">
+              <button type="button" className="remove-source-action" disabled={working || Boolean(actionId)} onClick={() => setRemoving(source)} aria-label={`移除 ${source.original_name}`}><Trash2 size={14} /> 移除</button>
               <a href={`/api/sources/${source.id}/file`} title="下载原件" aria-label={`下载 ${source.original_name}`}><Download size={15} /></a>
               {['ready', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
                 <button type="button" onClick={() => showEvidence(source)}><Layers size={14} /> 证据</button>
               )}
-              {['failed', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
-                <button type="button" onClick={() => startParse(source)} title="重新自动解析">
-                  <Play size={14} /> 重试
+              {['uploaded', 'failed', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
+                <button type="button" onClick={() => startParse(source)} disabled={Boolean(actionId) || working} title="重新自动解析">
+                  <Play size={14} /> {actionId === source.id ? '正在安排…' : source.status === 'uploaded' ? '开始解析' : '重试'}
                 </button>
               )}
-              {['queued', 'running'].includes(source.status) && <span className="queued-mark"><Check size={14} /> 处理中</span>}
+              {['queued', 'running'].includes(source.status) && <span className="queued-mark"><LoaderCircle className="spinning" size={14} /> {sourceProcessingLabel(source)}</span>}
             </div>
           </article>
         ))}
       </div>
 
+      {removing && <SourceRemovalDialog source={removing} onClose={() => setRemoving(null)} onRemoved={() => {
+        if (evidenceSourceId === removing.id) { setEvidenceSourceId(null); setEvidence([]) }
+        setMessage(`《${removing.original_name}》已从课程移除，历史记录与原件保留。`)
+        setRemoving(null)
+        void refresh()
+      }} />}
       {evidenceSourceId && (
         <section className="evidence-viewer" aria-label="原文证据">
           <div className="evidence-heading">

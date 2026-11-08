@@ -1,10 +1,11 @@
 """Small single-worker queue for development and the first deployment."""
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import time
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from .config import get_data_dir
@@ -13,7 +14,7 @@ from .exam_extraction import extract_exam_questions
 from .ingestion import ParseStatus, assert_transition
 from .material_types import classify_source
 from .model_gateway import ModelGateway
-from .models import DocumentNode, EvidenceBlock, ParseTask, Source
+from .models import DocumentNode, EvidenceBlock, ParseTask, Source, UsageRecord
 from .parsing import parse_file
 from .visual_parsing import transcribe_visual_source
 
@@ -26,6 +27,14 @@ def recover_interrupted_tasks(db: Session) -> int:
         source = db.get(Source, task.source_id)
         if source is not None:
             source.status = ParseStatus.QUEUED.value
+            source.processing_stage = ParseStatus.QUEUED.value
+            source.processing_completed = 0
+            source.processing_total = 0
+    interrupted_usage = list(db.scalars(select(UsageRecord).where(UsageRecord.status == "running")).all())
+    for record in interrupted_usage:
+        record.status = "failed"
+        record.reserved_tokens = 0
+        record.error = "服务重启，上次模型调用已中断；后续任务可重新执行"
     db.commit()
     return len(tasks)
 
@@ -38,17 +47,32 @@ def run_next_task(db: Session, upload_dir: Path, gateway: ModelGateway | None = 
         return False
 
     source = db.get(Source, task.source_id)
-    if source is None:
+    if source is None or source.removed_at is not None:
         task.status = ParseStatus.FAILED.value
         task.error = "任务关联的资料已不存在"
         db.commit()
         return True
 
+    claimed = db.execute(update(ParseTask).where(
+        ParseTask.id == task.id, ParseTask.status == ParseStatus.QUEUED.value,
+        ParseTask.source_id.in_(select(Source.id).where(Source.removed_at.is_(None))),
+    ).values(status=ParseStatus.RUNNING.value), execution_options={"synchronize_session": False})
+    if claimed.rowcount != 1:
+        db.rollback()
+        return True
+    db.refresh(source)
     assert_transition(ParseStatus(task.status), ParseStatus.RUNNING)
+    started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
     task.status = ParseStatus.RUNNING.value
     source.status = ParseStatus.RUNNING.value
+    source.processing_stage = "extracting"
+    source.processing_completed = 0
+    source.processing_total = 0
+    source.processing_started_at = started_at
+    source.processing_finished_at = None
+    source.processing_duration_seconds = 0
     db.commit()
-    started = time.monotonic()
     print(f"[worker] 开始解析 {source.id}（{source.extension}）", flush=True)
 
     try:
@@ -56,6 +80,8 @@ def run_next_task(db: Session, upload_dir: Path, gateway: ModelGateway | None = 
         if not path.is_file():
             raise FileNotFoundError("原件缺失，无法解析")
         outcome = parse_file(source.id, path, source.extension)
+        source.processing_stage = "transcribing"
+        db.commit()
         outcome = transcribe_visual_source(db, source, path, outcome, gateway)
         print(f"[worker] 内容提取完成，耗时 {time.monotonic() - started:.2f} 秒", flush=True)
 
@@ -81,6 +107,8 @@ def run_next_task(db: Session, upload_dir: Path, gateway: ModelGateway | None = 
                 content_hash=parsed_block.content_hash,
             ))
 
+        source.processing_stage = "classifying"
+        db.commit()
         classification = classify_source(
             db, source, [block.text[:2000] for block in outcome.blocks], gateway,
         )
@@ -107,7 +135,10 @@ def run_next_task(db: Session, upload_dir: Path, gateway: ModelGateway | None = 
         task.status = final_status
         task.error = "；".join(filter(None, [outcome.error, *extraction_errors])) or None
         source.status = final_status
+        source.processing_stage = final_status
         source.processing_note = task.error or ""
+        source.processing_finished_at = datetime.now(timezone.utc)
+        source.processing_duration_seconds = max(0, time.monotonic() - started)
         db.commit()
     except Exception as error:
         db.rollback()
@@ -118,7 +149,10 @@ def run_next_task(db: Session, upload_dir: Path, gateway: ModelGateway | None = 
             failed_task.error = str(error)[:2000]
         if failed_source is not None:
             failed_source.status = ParseStatus.FAILED.value
+            failed_source.processing_stage = ParseStatus.FAILED.value
             failed_source.processing_note = str(error)[:2000]
+            failed_source.processing_finished_at = datetime.now(timezone.utc)
+            failed_source.processing_duration_seconds = max(0, time.monotonic() - started)
         db.commit()
     return True
 

@@ -16,7 +16,6 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def migrate_schema() -> None:
-    inspector = inspect(engine)
     additions = {
         "courses": [
             ("scope_text", "TEXT NOT NULL DEFAULT ''"),
@@ -26,14 +25,26 @@ def migrate_schema() -> None:
             ("archived_at", "DATETIME"),
         ],
         "sources": [
+            ("removed_at", "DATETIME"),
             ("import_batch_id", "VARCHAR(36)"),
             ("relative_path", "VARCHAR(1000) NOT NULL DEFAULT ''"),
             ("material_type", "VARCHAR(24) NOT NULL DEFAULT 'other'"),
             ("material_confidence", "FLOAT NOT NULL DEFAULT 0"),
             ("material_rationale", "TEXT NOT NULL DEFAULT '尚未识别资料类型'"),
             ("processing_note", "TEXT NOT NULL DEFAULT ''"),
+            ("processing_stage", "VARCHAR(32) NOT NULL DEFAULT 'uploaded'"),
+            ("processing_completed", "INTEGER NOT NULL DEFAULT 0"),
+            ("processing_total", "INTEGER NOT NULL DEFAULT 0"),
+            ("processing_started_at", "DATETIME"),
+            ("processing_finished_at", "DATETIME"),
+            ("processing_duration_seconds", "FLOAT NOT NULL DEFAULT 0"),
+        ],
+        "usage_records": [
+            ("duration_seconds", "FLOAT NOT NULL DEFAULT 0"),
         ],
         "questions": [
+            ("stem_reviewed_at", "DATETIME"),
+            ("answer_reviewed_at", "DATETIME"),
             ("source_id", "VARCHAR(36)"),
             ("extraction_key", "VARCHAR(64) NOT NULL DEFAULT ''"),
             ("options", "JSON NOT NULL DEFAULT '[]'"),
@@ -70,6 +81,7 @@ def migrate_schema() -> None:
         ],
     }
     with engine.begin() as connection:
+        inspector = inspect(connection)
         for table, columns in additions.items():
             if not inspector.has_table(table):
                 continue
@@ -77,6 +89,10 @@ def migrate_schema() -> None:
             for name, definition in columns:
                 if name not in existing:
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
+                    # Legacy review meant a whole-question human confirmation.
+                    # Backfill only when adding each column, never on later startups.
+                    if table == "questions" and name in {"stem_reviewed_at", "answer_reviewed_at"} and "reviewed_at" in existing:
+                        connection.execute(text(f"UPDATE questions SET {name} = reviewed_at WHERE reviewed_at IS NOT NULL"))
         if inspector.has_table("courses"):
             connection.execute(text(
                 "UPDATE courses SET scope_source = 'user' "

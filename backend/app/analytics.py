@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .source_lifecycle import active_question
 from .models import KnowledgePoint, Question, QuestionKnowledgePoint
 
 
@@ -57,7 +58,9 @@ def sync_course_knowledge(db: Session, course_id: str) -> None:
 def course_knowledge_points(db: Session, course_id: str) -> list[KnowledgePoint]:
     sync_course_knowledge(db, course_id)
     return list(db.scalars(
-        select(KnowledgePoint).where(KnowledgePoint.course_id == course_id).order_by(KnowledgePoint.name)
+        select(KnowledgePoint).where(KnowledgePoint.course_id == course_id, KnowledgePoint.id.in_(
+            select(QuestionKnowledgePoint.knowledge_point_id).join(Question, Question.id == QuestionKnowledgePoint.question_id).where(active_question())
+        )).order_by(KnowledgePoint.name)
     ).all())
 
 
@@ -65,19 +68,19 @@ def course_analytics(db: Session, course_id: str, half_life_years: float) -> dic
     sync_course_knowledge(db, course_id)
     as_of_year = datetime.now(timezone.utc).year
     included = (
-        Question.course_id == course_id,
+        Question.course_id == course_id, active_question(),
         Question.status == "verified",
         Question.provenance == "original",
     )
     verified_count = int(db.scalar(select(func.count(Question.id)).where(
-        Question.course_id == course_id, Question.status == "verified",
+        Question.course_id == course_id, active_question(), Question.status == "verified",
     )) or 0)
     included_count = int(db.scalar(select(func.count(Question.id)).where(*included)) or 0)
     draft_count = int(db.scalar(select(func.count(Question.id)).where(
-        Question.course_id == course_id, Question.status == "draft",
+        Question.course_id == course_id, active_question(), Question.status == "draft",
     )) or 0)
     adapted_count = int(db.scalar(select(func.count(Question.id)).where(
-        Question.course_id == course_id, Question.provenance == "adapted",
+        Question.course_id == course_id, active_question(), Question.provenance == "adapted",
     )) or 0)
     unknown_year_count = int(db.scalar(select(func.count(Question.id)).where(
         *included, Question.origin_year.is_(None),

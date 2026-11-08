@@ -28,6 +28,9 @@ def test_migrate_schema_adds_learning_fields_and_is_idempotent(monkeypatch) -> N
             "CREATE TABLE sources (id VARCHAR(36) PRIMARY KEY, original_name VARCHAR(180))"
         ))
         connection.execute(text(
+            "CREATE TABLE usage_records (id VARCHAR(36) PRIMARY KEY, status VARCHAR(24))"
+        ))
+        connection.execute(text(
             "CREATE TABLE learning_tasks ("
             "id VARCHAR(36) PRIMARY KEY, session_id VARCHAR(36), reference_answer TEXT)"
         ))
@@ -53,9 +56,12 @@ def test_migrate_schema_adds_learning_fields_and_is_idempotent(monkeypatch) -> N
     assert {"knowledge_mode", "scope_text", "diagnostic_signature"} <= {
         column["name"] for column in inspector.get_columns("learning_sessions")
     }
-    assert {"material_type", "material_confidence", "material_rationale"} <= {
-        column["name"] for column in inspector.get_columns("sources")
-    }
+    assert {
+        "removed_at", "material_type", "material_confidence", "material_rationale", "processing_stage",
+        "processing_completed", "processing_total", "processing_started_at",
+        "processing_finished_at", "processing_duration_seconds",
+    } <= {column["name"] for column in inspector.get_columns("sources")}
+    assert "duration_seconds" in {column["name"] for column in inspector.get_columns("usage_records")}
     assert {"sub_skill", "cognitive_level", "difficulty_prior", "source_track", "visible_limitation"} <= {
         column["name"] for column in inspector.get_columns("learning_tasks")
     }
@@ -69,3 +75,20 @@ def test_migrate_schema_adds_learning_fields_and_is_idempotent(monkeypatch) -> N
         scope_source = connection.scalar(text("SELECT scope_source FROM courses WHERE id = 'course-1'"))
     assert remediation_answer == "原答案"
     assert scope_source == "user"
+
+
+def test_legacy_whole_question_review_migrates_once_without_inventing_ai_confirmation(monkeypatch) -> None:
+    engine = create_engine("sqlite://")
+    monkeypatch.setattr(database, "engine", engine)
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE questions (id TEXT PRIMARY KEY, reviewed_at DATETIME)"))
+        conn.execute(text("INSERT INTO questions VALUES ('human', '2026-11-01 12:00:00'), ('ai', NULL)"))
+    database.migrate_schema()
+    with engine.begin() as conn:
+        human = conn.execute(text("SELECT stem_reviewed_at, answer_reviewed_at FROM questions WHERE id='human'")).one()
+        assert human == ("2026-11-01 12:00:00", "2026-11-01 12:00:00")
+        assert conn.execute(text("SELECT stem_reviewed_at, answer_reviewed_at FROM questions WHERE id='ai'")).one() == (None, None)
+        conn.execute(text("UPDATE questions SET answer_reviewed_at=NULL WHERE id='human'"))
+    database.migrate_schema()
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT answer_reviewed_at FROM questions WHERE id='human'")) is None

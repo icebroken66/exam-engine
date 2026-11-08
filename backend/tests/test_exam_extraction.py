@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.exam_extraction import _stem_identity, _stem_matches_source
 from app.main import get_model_gateway
 from app.model_gateway import ModelGateway, MockProvider, ProviderReply, TokenUsage
-from app.models import LearningTask
+from app.models import LearningTask, Question, Source
 from app.worker import run_next_task
 from test_sources import create_course, upload
 
@@ -79,6 +79,22 @@ def upload_exam(client: TestClient, session_factory: sessionmaker, tmp_path: Pat
     with session_factory() as db:
         assert run_next_task(db, tmp_path / "uploads", ModelGateway(ExamProvider()))
     return course_id, source_id
+
+
+def test_adding_courseware_keeps_verified_exam_topics_in_scope(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    gateway = ModelGateway(ExamProvider())
+    client.app.dependency_overrides[get_model_gateway] = lambda: gateway
+    course_id, _ = upload_exam(client, session_factory, tmp_path)
+    client.get(f"/api/courses/{course_id}/learning-context")
+    upload(client, course_id, content="# 关系代数\n\n自然连接按共同属性匹配两个关系中的元组。".encode(), name="关系代数.md")
+    with session_factory() as db:
+        assert run_next_task(db, tmp_path / "uploads", gateway)
+    context = client.get(f"/api/courses/{course_id}/learning-context").json()
+    for topic in ["死锁", "事务隔离性", "关系键"]:
+        assert topic in context["scope_text"]
+    assert "关系代数" in context["topics"]
 
 
 def test_exam_is_automatically_structured_and_first_task_is_real_original(
@@ -223,3 +239,62 @@ def test_explicit_source_answer_is_not_replaced_by_ai(
     assert questions[0]["answer"] == "互斥、占有且等待、不可剥夺和循环等待。"
     purposes = [record["purpose"] for record in client.get(f"/api/courses/{course_id}/usage").json()["records"]]
     assert "exam_answer_solving" not in purposes
+
+
+class CountingExamProvider(ExamProvider):
+    def __init__(self) -> None:
+        self.solution_calls = 0
+
+    def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
+        if "<exam_solution>" in user_prompt:
+            self.solution_calls += 1
+        return super().complete(system_prompt, user_prompt, max_tokens)
+
+
+def test_retry_reuses_existing_answers_and_reports_question_progress(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    provider = CountingExamProvider()
+    gateway = ModelGateway(provider)
+    course_id = create_course(client, "数据库基础")
+    source_id = upload(
+        client, course_id, content=EXAM_TEXT.encode(), name="2025数据库期末试卷.md",
+    ).json()["source"]["id"]
+    with session_factory() as db:
+        assert run_next_task(db, tmp_path / "uploads", gateway)
+        assert provider.solution_calls == 3
+        for question in db.scalars(select(Question).where(Question.source_id == source_id)).all():
+            question.status = "draft"
+        db.commit()
+    assert client.post(f"/api/sources/{source_id}/parse").status_code == 201
+    with session_factory() as db:
+        assert run_next_task(db, tmp_path / "uploads", gateway)
+        source = db.get(Source, source_id)
+        assert source is not None
+        assert source.processing_completed == 3 and source.processing_total == 3
+        assert source.processing_stage == "ready"
+    assert provider.solution_calls == 3
+    purposes = [record["purpose"] for record in client.get(f"/api/courses/{course_id}/usage").json()["records"]]
+    assert purposes.count("exam_question_extraction") == 2
+    assert purposes.count("exam_question_validation") == 2
+
+
+def test_validation_progress_does_not_report_completion_while_model_is_pending(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    observed = []
+    class ProgressProvider(ExamProvider):
+        def complete(self, system_prompt, user_prompt, max_tokens):
+            if "<exam_validation>" in user_prompt:
+                with session_factory() as state_db:
+                    source = state_db.scalar(select(Source).where(Source.course_id == course_id))
+                    observed.append((source.processing_stage, source.processing_completed, source.processing_total))
+            return super().complete(system_prompt, user_prompt, max_tokens)
+    course_id = create_course(client, "数据库基础")
+    source_id = upload(client, course_id, content=EXAM_TEXT.encode(), name="2025数据库期末试卷.md").json()["source"]["id"]
+    with session_factory() as db:
+        assert run_next_task(db, tmp_path / "uploads", ModelGateway(ProgressProvider()))
+    assert observed == [("exam_validation", 0, 3)]
+    final = client.get(f"/api/courses/{course_id}/sources").json()[0]
+    assert final["status"] == "ready"
+    assert final["processing_completed"] == final["processing_total"] == 3

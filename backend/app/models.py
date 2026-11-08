@@ -43,6 +43,7 @@ class Source(Base):
     import_batch_id: Mapped[str | None] = mapped_column(ForeignKey("import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
     original_name: Mapped[str] = mapped_column(String(180))
     relative_path: Mapped[str] = mapped_column(String(1000), default="")
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     storage_key: Mapped[str] = mapped_column(String(80), unique=True)
     extension: Mapped[str] = mapped_column(String(12))
     media_type: Mapped[str] = mapped_column(String(160))
@@ -53,6 +54,12 @@ class Source(Base):
     material_confidence: Mapped[float] = mapped_column(Float, default=0)
     material_rationale: Mapped[str] = mapped_column(Text, default="尚未识别资料类型")
     processing_note: Mapped[str] = mapped_column(Text, default="")
+    processing_stage: Mapped[str] = mapped_column(String(32), default="uploaded")
+    processing_completed: Mapped[int] = mapped_column(Integer, default=0)
+    processing_total: Mapped[int] = mapped_column(Integer, default=0)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_duration_seconds: Mapped[float] = mapped_column(Float, default=0)
     rights_confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -123,6 +130,7 @@ class UsageRecord(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     reserved_tokens: Mapped[int] = mapped_column(Integer, default=0)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0)
+    duration_seconds: Mapped[float] = mapped_column(Float, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
@@ -148,6 +156,8 @@ class Question(Base):
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stem_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answer_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

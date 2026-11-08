@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Archive,
   ArrowRight,
-  BookOpen,
   ChevronRight,
   Circle,
   ExternalLink,
@@ -25,35 +24,64 @@ import { GitHubPanel } from './components/GitHubPanel'
 import { QuestionBankPanel } from './components/QuestionBankPanel'
 import { AnalyticsPanel } from './components/AnalyticsPanel'
 import { LearningPanel } from './components/LearningPanel'
+import { LearningHistoryPanel } from './components/LearningHistoryPanel'
+import { useCourseSources } from './lib/useCourseSources'
+import { SourceProgress } from './components/SourceProgress'
 
 const workflow = [
-  ['01', '汇集资料', '本地 / 1037 / GitHub'],
-  ['02', '建立证据库', '页码、章节、完整性'],
-  ['03', '诊断与补缺', '统计、练习、重测'],
-  ['04', '模拟与对照', '模拟卷、考后三档对照'],
+  ['01', '提供课程资料', '课件、往年卷、作业或笔记'],
+  ['02', '确认复习范围', '从现有资料识别具体考点'],
+  ['03', '诊断与补缺', '逐题作答，找到薄弱点'],
+  ['04', '独立重测', '用新题检查是否真正掌握'],
 ]
+
+const views = [['learn', '开始学习'], ['materials', '课程资料'], ['questions', '题目校准'], ['history', '学习记录'], ['analytics', '考点概览']] as const
+type View = typeof views[number][0]
+function readRoute() {
+  const [path, query] = window.location.hash.split('?')
+  const match = path.match(/^#\/courses\/([^/]+)\/(\w+)$/)
+  return { sessionId: new URLSearchParams(query).get('session'), courseId: match?.[1] ?? null, view: (views.some(([view]) => view === match?.[2]) ? match![2] : 'learn') as View }
+}
 
 function App() {
   const [courses, setCourses] = useState<Course[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(() => readRoute().courseId)
+  const [view, setView] = useState<View>(() => readRoute().view)
+  const [sessionId, setSessionId] = useState<string | null>(() => readRoute().sessionId)
+  useEffect(() => {
+    const sync = () => { const route = readRoute(); setSelectedId(route.courseId); setView(route.view); setSessionId(route.sessionId) }
+    window.addEventListener('hashchange', sync)
+    return () => window.removeEventListener('hashchange', sync)
+  }, [])
+  function navigate(courseId: string | null, nextView: View = 'learn', nextSession: string | null = null) {
+    setSelectedId(courseId); setView(nextView); setSessionId(nextSession)
+    window.location.hash = courseId ? `/courses/${courseId}/${nextView}${nextSession ? `?session=${encodeURIComponent(nextSession)}` : ''}` : ''
+  }
   const [health, setHealth] = useState<Health | null>(null)
   const [loading, setLoading] = useState(true)
   const [courseBusy, setCourseBusy] = useState('')
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [connectionVersion, setConnectionVersion] = useState(0)
 
   useEffect(() => {
+    let active = true
+    setLoading(true); setError('')
     Promise.allSettled([listCourses(true), getHealth()]).then(([courseResult, healthResult]) => {
+      if (!active) return
       if (courseResult.status === 'fulfilled') {
         setCourses(courseResult.value)
-        setSelectedId(courseResult.value.find((course) => !course.archived_at)?.id ?? null)
+        const wanted = readRoute().courseId
+        const chosen = courseResult.value.find(course => !course.archived_at && course.id === wanted) ?? courseResult.value.find(course => !course.archived_at)
+        navigate(chosen?.id ?? null, readRoute().view, chosen?.id === wanted ? readRoute().sessionId : null)
       } else {
         setError('暂时无法连接课程服务。请确认前后端均已启动。')
       }
-      if (healthResult.status === 'fulfilled') setHealth(healthResult.value)
+      setHealth(healthResult.status === 'fulfilled' ? healthResult.value : null)
       setLoading(false)
     })
-  }, [])
+    return () => { active = false }
+  }, [connectionVersion])
 
   const activeCourses = courses.filter((course) => !course.archived_at)
   const archivedCourses = courses.filter((course) => course.archived_at)
@@ -61,7 +89,7 @@ function App() {
 
   function onCreated(course: Course) {
     setCourses((current) => [course, ...current])
-    setSelectedId(course.id)
+    navigate(course.id)
     setShowForm(false)
     setError('')
   }
@@ -69,13 +97,13 @@ function App() {
   function onArchived(course: Course) {
     const next = activeCourses.find((item) => item.id !== course.id)
     setCourses((current) => current.map((item) => item.id === course.id ? course : item))
-    setSelectedId(next?.id ?? null)
+    navigate(next?.id ?? null)
   }
 
   function onDeleted(courseId: string) {
     const remaining = courses.filter((course) => course.id !== courseId)
     setCourses(remaining)
-    setSelectedId(remaining.find((course) => !course.archived_at)?.id ?? null)
+    navigate(remaining.find((course) => !course.archived_at)?.id ?? null)
   }
 
   async function restore(course: Course) {
@@ -84,7 +112,7 @@ function App() {
     try {
       const restored = await archiveCourse(course.id, false)
       setCourses((current) => current.map((item) => item.id === course.id ? restored : item))
-      setSelectedId(restored.id)
+      navigate(restored.id)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '课程恢复失败，请重试')
     } finally {
@@ -97,7 +125,7 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">急</div>
-          <div><strong>期末急救引擎</strong><span>EXAM ENGINE / 0.1</span></div>
+          <div><strong>期末急救引擎</strong><span>课程学习工作台</span></div>
         </div>
 
         <div className="side-section-label">课程工作台</div>
@@ -112,7 +140,7 @@ function App() {
             <button
               key={course.id}
               className={`course-nav-item ${selectedId === course.id ? 'active' : ''}`}
-              onClick={() => setSelectedId(course.id)}
+              onClick={() => navigate(course.id)}
             >
               <span className="course-index">{String(index + 1).padStart(2, '0')}</span>
               <span><strong>{course.name}</strong><small>{course.school}</small></span>
@@ -142,24 +170,24 @@ function App() {
 
       <main className="main-canvas">
         <header className="topbar">
-          <span>学习 Agent / 多考点诊断</span>
+          <span>从课程资料到独立作答</span>
           <div className={`service-status ${health ? 'online' : ''}`}>
             <span className="status-dot" />
-            {health ? `API 正常 · ${health.database}` : 'API 未连接'}
+            {health ? '服务已连接' : 'API 未连接'}
           </div>
         </header>
 
-        {error && <div className="error-banner" role="alert">{error}</div>}
+        {error && <div className="error-banner" role="alert"><span>{error}</span><button className="secondary-action" type="button" onClick={() => setConnectionVersion(value => value + 1)} disabled={loading}>重新连接</button></div>}
 
         {selected ? (
-          <CourseWorkspace course={selected} onArchived={onArchived} onDeleted={onDeleted} />
+          <CourseWorkspace key={selected.id} course={selected} view={view} sessionId={sessionId} onNavigate={(nextView, nextSession) => navigate(selected.id, nextView, nextSession)} onArchived={onArchived} onDeleted={onDeleted} />
         ) : (
           <EmptyWorkspace loading={loading} onCreate={() => setShowForm(true)} />
         )}
 
         <footer className="page-footer">
           <span>证据优先 · 作答留痕 · 低置信不冒充掌握</span>
-          <span>当前：主动诊断、针对补缺、同类练习与独立重测已连通</span>
+          <span>诊断 → 补缺 → 练习 → 独立重测</span>
         </footer>
       </main>
 
@@ -204,25 +232,30 @@ function EmptyWorkspace({ loading, onCreate }: { loading: boolean; onCreate: () 
 
 interface CourseWorkspaceProps {
   course: Course
+  view: View
+  sessionId: string | null
+  onNavigate: (view: View, sessionId?: string | null) => void
   onArchived: (course: Course) => void
   onDeleted: (courseId: string) => void
 }
 
-function CourseWorkspace({ course, onArchived, onDeleted }: CourseWorkspaceProps) {
-  const [importVersion, setImportVersion] = useState(0)
+function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDeleted }: CourseWorkspaceProps) {
   const [learningVersion, setLearningVersion] = useState(0)
   const [questionVersion, setQuestionVersion] = useState(0)
+  const [visited, setVisited] = useState<Set<View>>(() => new Set([view]))
+  useEffect(() => { setVisited(current => current.has(view) ? current : new Set([...current, view])) }, [view])
   const [showDelete, setShowDelete] = useState(false)
   const [managing, setManaging] = useState(false)
   const [managementError, setManagementError] = useState('')
 
-  function refreshLearningContext() {
-    setLearningVersion((version) => version + 1)
-  }
+  const refreshLearningContext = useCallback(() => {
+    setLearningVersion(version => version + 1)
+    setQuestionVersion(version => version + 1)
+  }, [])
+  const sourceState = useCourseSources(course.id, refreshLearningContext)
 
   function onGithubImported() {
-    setImportVersion((version) => version + 1)
-    refreshLearningContext()
+    void sourceState.refresh()
   }
 
   async function archive() {
@@ -241,12 +274,11 @@ function CourseWorkspace({ course, onArchived, onDeleted }: CourseWorkspaceProps
     <div className="workspace course-workspace">
       <section className="course-heading">
         <div>
-          <span className="eyebrow">{course.school} / 课程 {course.id.slice(0, 8)}</span>
+          <span className="eyebrow">{course.school}</span>
           <h1>{course.name}</h1>
-          <p>{examCountdown(course.exam_date)} · 先准备复习计划，确认后再开始诊断</p>
+          <p>{examCountdown(course.exam_date)} · 按自己的节奏完成复习</p>
         </div>
         <div className="course-heading-actions">
-          <div className="completion-stamp"><strong>A0</strong><span>核心学习闭环</span><small>真实状态驱动</small></div>
           <div className="course-management" aria-label="课程管理">
             <button type="button" onClick={archive} disabled={managing}>
               {managing ? <LoaderCircle className="spin" size={14} /> : <Archive size={14} />} 归档课程
@@ -259,42 +291,25 @@ function CourseWorkspace({ course, onArchived, onDeleted }: CourseWorkspaceProps
       </section>
       {managementError && <div className="learning-error" role="alert">{managementError}</div>}
 
-      <LearningPanel key={course.id} courseId={course.id} refreshVersion={learningVersion} />
-
-      <details className="course-tools" id="course-tools">
-        <summary>资料与质量工具 / 自动解析、原文证据、校题与统计</summary>
-        <div className="course-tools-content">
-          <nav className="workflow-nav" aria-label="课程辅助工具">
-            <a href="#sources"><span>01</span><strong>资料与证据</strong><small>上传后自动解析</small></a>
-            <a href="#questions"><span>02</span><strong>人工校题</strong><small>后台质量核验</small></a>
-            <a href="#analytics"><span>03</span><strong>考点统计</strong><small>SQL 可复算结果</small></a>
-          </nav>
-
-          <section className="course-grid" id="sources">
-            <SourcePanel courseId={course.id} reloadToken={importVersion} onChanged={refreshLearningContext} />
-
-            <aside className="next-brief">
-              <span className="eyebrow">1037 / 辅助导入</span>
-              <Library size={29} strokeWidth={1.5} />
-              <h2>官网下载，<br />回到这里上传。</h2>
-              <p>预览不完整或需要登录时，由你在官网自行登录并下载原件。上传后自动解析，不需要再手动提交解析任务。</p>
-              <a href="https://1037.wiki" target="_blank" rel="noreferrer">
-                打开 1037 官网 <ExternalLink size={15} />
-              </a>
-              <small>本产品不会接收你的 1037 密码，也不会绕过网站访问限制。</small>
-              <GitHubPanel courseId={course.id} onImported={onGithubImported} />
-            </aside>
-          </section>
-
-          <QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => setQuestionVersion((version) => version + 1)} />
-          <AnalyticsPanel courseId={course.id} reloadToken={questionVersion} />
-
-          <section className="principle-band">
-            <BookOpen size={22} />
-            <p><strong>资料与题库是 Agent 的工具，不是学习主流程。</strong>真实模型与确定性判分已接入；低置信结果不会更新为确定掌握，重测通过也不冒充永久掌握。</p>
-          </section>
-        </div>
-      </details>
+      <nav className="workspace-tabs" aria-label="课程功能">
+        {views.map(([id, label]) => <a key={id} href={`#/courses/${course.id}/${id}`} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined}>{label}</a>)}
+      </nav>
+      <div hidden={view !== 'learn'}>
+        <SourceProgress state={sourceState} onOpenSources={() => onNavigate('materials')} />
+        {sessionId && <div className="selected-round-banner"><span>正在继续选中的历史轮次</span><button className="secondary-action" onClick={() => onNavigate('learn')}>返回最近一轮</button></div>}
+        <LearningPanel sessionId={sessionId} onOpenLatest={() => onNavigate('learn')} courseId={course.id} refreshVersion={learningVersion} onOpenSources={() => onNavigate('materials')} />
+      </div>
+      {(visited.has('materials') || view === 'materials') && <section hidden={view !== 'materials'} className="materials-view">
+        <div className="view-heading"><div><h2>课程资料</h2><p>上传课件、往年卷或笔记，解析完成后回到学习页开始诊断。</p></div><button className="secondary-action" onClick={() => onNavigate('learn')}>返回学习 <ArrowRight size={16} /></button></div>
+        <SourcePanel courseId={course.id} state={sourceState} />
+        <details className="import-channels"><summary>其他资料来源 · GitHub / 1037</summary>
+          <div className="import-channel-grid"><GitHubPanel courseId={course.id} onImported={onGithubImported} />
+            <section><Library size={24} /><h3>1037 资料</h3><p>到官网下载课程资料，再通过上方入口上传。</p><a href="https://1037.wiki" target="_blank" rel="noreferrer">打开 1037 <ExternalLink size={14} /></a></section></div>
+        </details>
+      </section>}
+      {(visited.has('questions') || view === 'questions') && <div hidden={view !== 'questions'}><div className="view-heading"><div><h2>题目校准</h2><p>核对提取的题目和参考答案，为后续学习提供可靠依据。</p></div></div><QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => { setQuestionVersion(version => version + 1); refreshLearningContext() }} /></div>}
+      {view === 'history' && <LearningHistoryPanel courseId={course.id} onResume={id => onNavigate('learn', id)} onChanged={refreshLearningContext} />}
+      {view === 'analytics' && <><div className="view-heading"><div><h2>考点概览</h2><p>查看现有资料中的考点分布，结合学习记录安排复习。</p></div></div><AnalyticsPanel courseId={course.id} reloadToken={questionVersion} /></>}
       {showDelete && <DeleteCourseDialog course={course} onClose={() => setShowDelete(false)} onDeleted={onDeleted} />}
     </div>
   )

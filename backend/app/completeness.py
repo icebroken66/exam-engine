@@ -31,7 +31,7 @@ def course_completeness(db: Session, course_id: str) -> dict | None:
     course = db.get(Course, course_id)
     if course is None:
         return None
-    sources = list(db.scalars(select(Source).where(Source.course_id == course_id).order_by(Source.created_at)).all())
+    sources = list(db.scalars(select(Source).where(Source.course_id == course_id, Source.removed_at.is_(None)).order_by(Source.created_at)).all())
     source_ids = [source.id for source in sources]
     issues: list[CompletenessIssue] = []
     total_nodes = 0
