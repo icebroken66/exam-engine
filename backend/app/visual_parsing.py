@@ -1,8 +1,9 @@
+from contextlib import closing
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageOps
-from pypdf import PdfReader
+import pypdfium2 as pdfium
 from sqlalchemy.orm import Session
 
 from .model_gateway import ModelError, ModelGateway, VisionImage
@@ -28,25 +29,28 @@ def _prepare_image(data: bytes, label: str) -> VisionImage:
 def _pdf_page_images(path: Path, page_numbers: set[int]) -> tuple[dict[int, list[VisionImage]], list[str]]:
     pages: dict[int, list[VisionImage]] = {}
     issues: list[str] = []
-    reader = PdfReader(path)
-    for page_number in sorted(page_numbers):
-        images: list[VisionImage] = []
-        try:
-            embedded = list(reader.pages[page_number - 1].images)
-        except Exception as error:
-            issues.append(f"第 {page_number} 页图片提取失败：{str(error)[:160]}")
-            continue
-        for index, image in enumerate(embedded, start=1):
-            try:
-                images.append(_prepare_image(image.data, f"第 {page_number} 页，图片 {index}"))
-            except Exception:
-                continue
-        if images:
-            pages[page_number] = images[:6]
-            if len(images) > 6:
-                issues.append(f"第 {page_number} 页图片过多，仅转录前 6 张有效图片，需人工核对")
-        else:
-            issues.append(f"第 {page_number} 页没有可转录的有效页面图片")
+    if not page_numbers:
+        return pages, issues
+    # Render the composed page, including vectors, placement, rotation and masks.
+    # Extracting individual embedded images loses formulas and reading order.
+    try:
+        with pdfium.PdfDocument(path) as document:
+            for page_number in sorted(page_numbers):
+                try:
+                    with closing(document[page_number - 1]) as page:
+                        width, height = page.get_size()
+                        if min(width, height) <= 0:
+                            raise ValueError("页面尺寸无效")
+                        scale = min(2.0, 2400 / max(width, height))
+                        with closing(page.render(scale=scale)) as bitmap:
+                            with bitmap.to_pil() as image:
+                                output = BytesIO()
+                                image.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
+                    pages[page_number] = [VisionImage(output.getvalue(), "image/jpeg", f"第 {page_number} 页，完整页面")]
+                except Exception as error:
+                    issues.append(f"第 {page_number} 页整页渲染失败：{str(error)[:160]}")
+    except Exception as error:
+        issues.append(f"PDF整页渲染失败：{str(error)[:160]}")
     return pages, issues
 
 
@@ -101,19 +105,20 @@ def transcribe_visual_source(
             issues.append(f"第 {page_number} 页视觉转录失败：{error.message}")
             continue
         if transcription.text.strip():
-            blocks.extend(make_blocks(source.id, f"{outcome.parser_version}+vision-v1", node, transcription.text))
+            blocks.extend(make_blocks(source.id, f"{outcome.parser_version}+vision-v2", node, transcription.text))
         else:
             issues.append(f"第 {page_number} 页未得到可用转录文本")
         issues.append(f"第 {page_number} 页视觉转录置信度 {transcription.confidence:.2f}")
         issues.extend(f"第 {page_number} 页：{issue}" for issue in transcription.issues)
 
-    merged = finish_outcome(f"{outcome.parser_version}+vision-v1", list(outcome.nodes), blocks)
-    stats = {**merged.stats, "vision_pages": len(pages)}
+    merged = finish_outcome(f"{outcome.parser_version}+vision-v2", list(outcome.nodes), blocks)
+    stats = {**outcome.stats, **merged.stats, "vision_pages": len(pages)}
     return ParseOutcome(
         merged.parser_version,
         "needs_transcription_review",
         "；".join(filter(None, [
             merged.error,
+            outcome.error,
             *issues,
             "视觉转录仅为候选，确认前不参与范围分析或出题",
         ])),

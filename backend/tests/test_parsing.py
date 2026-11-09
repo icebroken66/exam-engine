@@ -60,6 +60,20 @@ def test_ids_change_with_source_identity() -> None:
     assert stable_id("a", "node") != stable_id("b", "node")
 
 
+def test_aes_pdf_with_empty_user_password_can_be_parsed(tmp_path):
+    from pypdf import PdfWriter
+    plain = tmp_path / "plain.pdf"
+    canvas = Canvas(str(plain))
+    canvas.drawString(72, 720, "AES course evidence")
+    canvas.save()
+    writer = PdfWriter(clone_from=plain)
+    writer.encrypt("", "owner-password", algorithm="AES-256")
+    encrypted = tmp_path / "encrypted.pdf"
+    writer.write(encrypted)
+    outcome = parse_file("aes", encrypted, ".pdf")
+    assert outcome.status == "ready" and "AES course evidence" in outcome.blocks[0].text
+
+
 def test_pdf_repairs_complete_utf16_pairs_without_changing_formula(monkeypatch):
     page = SimpleNamespace(extract_text=lambda: "signal \ud835\udc65(t) = 2")
     monkeypatch.setattr("app.parsing.PdfReader", lambda path: SimpleNamespace(pages=[page]))

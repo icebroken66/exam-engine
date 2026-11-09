@@ -58,6 +58,8 @@ OPENAI_MODEL=replace-with-an-available-model-id
 - 使用第三方兼容服务时，`OPENAI_BASE_URL` 填写其提供的 API 根地址，常见形式为 `https://服务域名/v1`；以提供者要求为准。这里**不要填写网页聊天地址，也不要附加 `/chat/completions`**，程序会自行拼接该路径。
 - `OPENAI_MODEL` 必须是该密钥实际有权限调用的 API 模型 ID，不能直接填写产品的显示名称。项目使用 `messages`、`response_format: {"type":"json_object"}` 与 `max_tokens`；仅支持 Responses API 或不接受这些参数的服务/模型，当前不能直接接入。接口兼容也不代表教学效果已经验收。
 - 转录图片或扫描 PDF 还需要模型支持图片输入。不支持图片时，先使用文字版 PDF、DOCX、PPTX、TXT 或 Markdown；复杂公式、表格和扫描件仍需核对原件。
+
+- PDF 空文本页或因损坏字符而弃用文本的页面会整页渲染后送入视觉转录，保留图形、公式和版面关系；最长边不超过 2400 像素。候选转录仍需对照原件确认，确认前不参与学习。已有文本但漏掉部分公式/图形的页面尚不会自动触发这一回退。更新后请重新运行第 2 节的依赖安装命令，新增 PDF 渲染及 AES 解密依赖；有密码的 PDF 仍需先提供可读取版本。
 - `.env` 修改后，需要停止并重新运行 `npm run dev`，让 API 与 Worker 使用同一份新配置。
 - 密钥只供本机后端和 Worker 调用模型，不需要填入前端代码，也不要新增 `VITE_OPENAI_API_KEY` 一类变量。
 

@@ -12,7 +12,9 @@ dependencies = [
   "python-dotenv>=1,<2",
   "python-multipart>=0.0.20,<1",
   "httpx>=0.28,<1",
-  "pypdf>=6,<7",
+  "pypdf[crypto]>=6,<7",
+  "pypdfium2>=4.30,<6",
+  "Pillow>=11,<13",
   "python-docx>=1.2,<2",
   "python-pptx>=1.0,<2",
 ]

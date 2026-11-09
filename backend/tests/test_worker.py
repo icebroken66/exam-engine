@@ -111,6 +111,26 @@ def test_scanned_pdf_page_is_transcribed_without_becoming_an_original_question(
     }
 
 
+def test_vector_only_pdf_uses_visual_review_gate(
+    client: TestClient, session_factory: sessionmaker, tmp_path: Path,
+) -> None:
+    pdf = tmp_path / "vector.pdf"
+    canvas = Canvas(str(pdf))
+    canvas.line(50, 50, 400, 50)
+    canvas.line(150, 20, 150, 400)
+    canvas.save()
+    course_id = create_course(client)
+    source_id = upload(client, course_id, content=pdf.read_bytes(), name="vector.pdf").json()["source"]["id"]
+    with session_factory() as db:
+        assert run_next_task(db, tmp_path / "uploads", ModelGateway(VisionProvider()))
+        source = db.get(Source, source_id)
+        assert source.status == "needs_transcription_review"
+        assert prepare_course_context(db, course_id, None)["can_start"] is False
+        assert not db.scalars(select(Question).where(Question.source_id == source_id)).all()
+    assert client.get(f"/api/sources/{source_id}/evidence").json()[0]["page_number"] == 1
+    assert client.post(f"/api/sources/{source_id}/transcription-review").json()["status"] == "ready"
+
+
 def test_worker_recovers_interrupted_task(client: TestClient, session_factory: sessionmaker, tmp_path: Path) -> None:
     course_id = create_course(client)
     source_id = upload(client, course_id, content=b"# Recovery\n\nEvidence.").json()["source"]["id"]

@@ -70,4 +70,6 @@ shutil.copytree('data/uploads', target / 'uploads')
 
 ## 实际小检查与第二科目
 
+后续[PDF整页视觉回退评审](review-2026-11-09-pdf-render.md)记录矢量/乱码页渲染、AES依赖修复及真实视觉转录的成功与保存失败边界。
+
 最新结果见[小检查和信号评审](review-2026-11-09-checks-and-signals.md)。actual-checks.json是读取实际问题后人工写错配/改正输入的已发生记录，不是给任意新问题硬套的用例。conceptual-help文件检查完整自然语言示范→局部解释的当轮帮助。signals-step-impulse夹具基于用户授权本地原件，hash/页码可追溯；原件不分发，来源与夹具仍须核查，不能冒充整科端到端支持。运行 `scripts/check_tutoring_signals.py` 可独立做有限数值核查，无模型调用。
