@@ -19,11 +19,11 @@ import {
   getCurrentLearningSession,
   getLearningContext,
   getLearningSession,
-  requestLearningHint,
   startLearningSession,
   submitLearningAttempt,
 } from '../lib/api'
 import type { CourseContext, LearningSession, LearningTask } from '../lib/api'
+import { TutoringPanel } from './TutoringPanel'
 import { StudyContent } from './StudyContent'
 import { LearningOperationStatus } from './LearningOperationStatus'
 import { GradeReviewControls } from './GradeReviewControls'
@@ -65,6 +65,9 @@ const eventLabels: Record<string, string> = {
   diagnostic_advanced: '进入下一道诊断',
   attempt_graded: '保存作答与判分依据',
   hint_requested: '学生请求提示',
+  tutoring_saved: '带学回复已保存（不计掌握）',
+  tutoring_received: '带学回复已送达',
+  tutoring_retest_consent: '学生选择将重测转为带学',
   weakness_identified: 'Agent 确定当前薄弱点',
   practice_assigned: 'Agent 安排同类练习',
   remediation_repeated: '练习未通过，回到补缺',
@@ -140,9 +143,9 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
     setAnswerState(value)
     if (session?.current_task?.id) { try { sessionStorage.setItem(`answer:${session.current_task.id}`, value) } catch { /* Storage may be disabled. */ } }
   }
-  const [hint, setHint] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
+  const [tutoringBusy, setTutoringBusy] = useState(false)
   const [error, setError] = useState('')
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const [recoveryNotice, setRecoveryNotice] = useState('')
@@ -191,7 +194,6 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
     let draft = ''
     try { draft = taskId ? sessionStorage.getItem(`answer:${taskId}`) ?? '' : '' } catch { /* Storage may be disabled. */ }
     setAnswerState(draft)
-    setHint('')
     setError('')
     setStartedAt(Date.now())
   }, [taskId])
@@ -232,7 +234,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (!session || !answer.trim() || busy || recoveryRequired) return
+    if (!session || !answer.trim() || busy || tutoringBusy || recoveryRequired) return
     setBusy('answer')
     setError(''); setRecoveryNotice('')
     try {
@@ -246,7 +248,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
   }
 
   async function next() {
-    if (!session || busy || recoveryRequired) return
+    if (!session || busy || tutoringBusy || recoveryRequired) return
     setRecoveryNotice('')
     setBusy('next')
     setError('')
@@ -261,7 +263,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
   }
 
   async function restart() {
-    if (busy || recoveryRequired) return
+    if (busy || tutoringBusy || recoveryRequired) return
     setBusy('start'); setRecoveryNotice('')
     setError('')
     try {
@@ -275,24 +277,8 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
     }
   }
 
-  async function showHint() {
-    if (!session || busy || recoveryRequired) return
-    setRecoveryNotice('')
-    setBusy('hint')
-    setError('')
-    try {
-      const result = await requestLearningHint(session)
-      setHint(result.hint)
-      setSession(result.session)
-    } catch (reason) {
-      await recoverProgress(session, reason)
-    } finally {
-      setBusy('')
-    }
-  }
-
   async function beginDiagnostic() {
-    if (busy || recoveryRequired) return
+    if (busy || tutoringBusy || recoveryRequired) return
     setRecoveryNotice('')
     setBusy('start')
     setError('')
@@ -371,7 +357,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
         ) : <p className="learning-error" role="alert">{error || '暂时无法准备课程，请刷新重试。'}</p>}
         {context && error && <div className="learning-error preparation-error" role="alert">{error}</div>}
         <div className="preparation-actions">
-          <button className="primary-action" type="button" onClick={beginDiagnostic} disabled={!context?.can_start || Boolean(busy) || recoveryRequired || Boolean(loadError)}>
+          <button className="primary-action" type="button" onClick={beginDiagnostic} disabled={!context?.can_start || Boolean(busy) || tutoringBusy || recoveryRequired || Boolean(loadError)}>
             {busy === 'start' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
             {startLabel}
           </button>
@@ -443,7 +429,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
             <h3>本轮学习已完成</h3>
             <p>已诊断 {session.diagnostic_completed} 个主题，完成 {session.practice_completed} 道练习，通过 {session.retest_passed} 次独立重测。可在学习记录中回看题目与作答，或开始新一轮诊断。</p>
             <p>这只是本轮结果，不代表整门课已覆盖或长期掌握。<a href={`#/courses/${courseId}/analytics`}>查看未检查的资料与覆盖记录</a></p>
-            <div className="learning-actions"><button className="secondary-action" type="button" onClick={restart} disabled={Boolean(busy) || recoveryRequired}><RotateCcw size={15} /> 开始新一轮诊断</button></div>
+            <div className="learning-actions"><button className="secondary-action" type="button" onClick={restart} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}><RotateCcw size={15} /> 开始新一轮诊断</button></div>
           </div>
         </div>
       ) : task && session.stage === 'remediating' ? (
@@ -453,7 +439,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
           <p>Agent 选择这里，是因为保存的诊断作答中出现了真实错误，而不是按固定章节顺序播放。</p>
           <EvidenceAndAnswer task={task} />
           <div className="learning-actions">
-            <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || recoveryRequired}>
+            <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
               {busy === 'next' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
               {busy === 'next' ? 'Agent 正在出题…' : '开始同类练习'}
             </button>
@@ -465,7 +451,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
           <p>首次出题可能仍在处理中，也可能中途失败。先读取已保存进度；确认没有结果后，可以重试准备当前轮次，不会另建一轮。</p>
           <div className="learning-actions">
             <button className="secondary-action" type="button" disabled={Boolean(busy)} onClick={reloadSavedProgress}>读取已保存进度</button>
-            {sessionId ? <button className="secondary-action" type="button" onClick={onOpenLatest}>返回最近一轮</button> : <button className="primary-action" type="button" disabled={Boolean(busy) || recoveryRequired} onClick={beginDiagnostic}>重试准备当前轮次</button>}
+            {sessionId ? <button className="secondary-action" type="button" onClick={onOpenLatest}>返回最近一轮</button> : <button className="primary-action" type="button" disabled={Boolean(busy) || tutoringBusy || recoveryRequired} onClick={beginDiagnostic}>重试准备当前轮次</button>}
           </div>
         </div>
       ) : task ? (
@@ -523,7 +509,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
               </div>
             ) : !graded ? (
               <label className="answer-field">
-                <span>你的独立作答</span>
+                <span>{task.help_exposures > 0 ? '你的正式作答（已接受帮助）' : '你的独立作答'}</span>
                 <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="写出关键条件与结论，不要只写“懂了”。" rows={5} disabled={!canAnswer || busy === 'answer'} required />
               </label>
             ) : null}
@@ -541,38 +527,39 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
               </div>
             )}
 
-            {attempt && <GradeReviewControls key={attempt.id} sessionId={session.id} attempt={attempt} onChanged={setSession} disabled={Boolean(busy) || recoveryRequired} />}
+            {attempt && <GradeReviewControls key={attempt.id} sessionId={session.id} attempt={attempt} onChanged={setSession} disabled={Boolean(busy) || tutoringBusy || recoveryRequired} />}
 
             {(graded || session.stage === 'remediating') && <EvidenceAndAnswer task={task} />}
-            {hint && <div className="hint-box"><Lightbulb size={17} /><p>{hint}</p></div>}
 
             <div className="learning-actions">
               {canAnswer && (
                 <>
-                  <button className="primary-action" type="submit" disabled={!answer.trim() || Boolean(busy) || recoveryRequired}>
+                  <button className="primary-action" type="submit" disabled={!answer.trim() || Boolean(busy) || tutoringBusy || recoveryRequired}>
                     {busy === 'answer' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
-                    {busy === 'answer' ? '正在保存并判分…' : attempt?.verdict === 'ungraded' ? '补充后重新提交' : '提交独立作答'}
+                    {busy === 'answer' ? '正在保存并判分…' : attempt?.verdict === 'ungraded' ? '补充后重新提交' : task.help_exposures > 0 ? '提交正式作答（已接受帮助）' : '提交独立作答'}
                   </button>
                   {task.kind !== 'retest' && (
-                    <button className="text-action" type="button" onClick={showHint} disabled={Boolean(busy) || recoveryRequired}>
-                      <Lightbulb size={16} /> {busy === 'hint' ? '正在读取提示…' : '给我一点提示'}
+                    <button className="text-action" type="button" onClick={() => { const input = document.querySelector<HTMLTextAreaElement>('.tutoring-panel textarea'); input?.scrollIntoView({ behavior: 'smooth', block: 'center' }); input?.focus({ preventScroll: true }) }} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
+                      <Lightbulb size={16} /> 围绕当前题求助
                     </button>
                   )}
                 </>
               )}
               {canNext && session.stage !== 'blocked' && (
-                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || recoveryRequired}>
+                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
                   {busy === 'next' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
                   {busy === 'next' ? 'Agent 正在决策…' : session.next_action}
                 </button>
               )}
               {session.stage === 'blocked' && (
-                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || recoveryRequired}><RotateCcw size={17} /> {task.source_removed ? '依据剩余资料重新安排' : '恢复当前学习任务'}</button>
+                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}><RotateCcw size={17} /> {task.source_removed ? '依据剩余资料重新安排' : '恢复当前学习任务'}</button>
               )}
             </div>
           </form>
         </div>
       ) : null}
+
+      {task && session.stage !== 'completed' && !task.source_removed && <TutoringPanel key={task.id} session={session} onChanged={setSession} onBusy={setTutoringBusy} disabled={Boolean(busy) || recoveryRequired} />}
 
       {session.points.length > 0 && (
         <div className="learning-state-grid">

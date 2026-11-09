@@ -735,6 +735,7 @@ class LearningAttemptRead(BaseModel):
 
 class LearningTaskRead(BaseModel):
     source_removed: bool = False
+    help_exposures: int = 0
     id: str
     kind: Literal["diagnostic", "practice", "retest"]
     ordinal: int
@@ -877,3 +878,43 @@ class CourseCoverageRead(BaseModel):
     retest_linked_units: int
     units: list[CoverageUnitRead]
     limitation: str
+
+
+class TutoringInput(LearningProgressInput):
+    request_id: str = Field(min_length=1, max_length=36)
+    expected_sequence: int = Field(ge=0)
+    message: str = Field(min_length=1, max_length=4000)
+    allow_retest_help: bool = False
+
+
+class TutoringReply(BaseModel):
+    message: str = Field(min_length=1, max_length=12000)
+    action: Literal["probe", "clarify", "hint", "explain", "example", "counterexample", "prerequisite", "check", "verify", "continue", "pause"]
+    reason: str = Field(min_length=1, max_length=1000)
+    evidence_ids: list[str] = Field(max_length=12)
+    help_level: Literal["none", "direction", "step", "worked_answer"]
+    observation: str = Field(max_length=1000)
+    uncertainty: str = Field(max_length=1000)
+
+
+class TutoringTurnRead(BaseModel):
+    id: str
+    request_id: str
+    task_id: str
+    sequence: int
+    student_message: str
+    status: str
+    reply: TutoringReply | None
+    citations: list[QuestionEvidenceRead]
+    error: str
+    mocked: bool
+    delivered_at: datetime | None
+    created_at: datetime
+
+
+class TutoringHistoryRead(BaseModel):
+    task_id: str
+    sequence: int
+    turns: list[TutoringTurnRead]
+    retest_help_enabled: bool
+    session: LearningSessionRead

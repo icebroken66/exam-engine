@@ -301,3 +301,26 @@ class LearningEvent(Base):
     kind: Mapped[str] = mapped_column(String(40))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class TutoringTurn(Base):
+    __tablename__ = "tutoring_turns"
+    __table_args__ = (
+        UniqueConstraint("session_id", "request_id", name="uq_tutor_request"),
+        UniqueConstraint("task_id", "sequence", name="uq_tutor_sequence"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    session_id: Mapped[str] = mapped_column(ForeignKey("learning_sessions.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("learning_tasks.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    sequence: Mapped[int] = mapped_column(Integer)
+    student_message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="running")
+    progress_version: Mapped[str] = mapped_column(String(64))
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    reply: Mapped[dict] = mapped_column(JSON, default=dict)
+    usage_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

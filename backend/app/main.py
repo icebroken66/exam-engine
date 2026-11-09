@@ -12,10 +12,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .analytics import course_analytics, course_knowledge_points, sync_question_knowledge
+from . import tutoring
 from .coverage import course_coverage
 from .completeness import course_completeness
 from .config import get_data_dir
-from .database import Base, engine, get_db, migrate_schema
+from .database import Base, SessionLocal, engine, get_db, migrate_schema
 from .exam_extraction import extract_exam_questions
 from .github import GitHubError, GitHubPreview, GitHubService
 from .ingestion import ParseStatus, assert_transition
@@ -27,7 +28,7 @@ from .model_gateway import ModelError, ModelGateway
 from .models import (
     Course, DocumentNode, EvidenceBlock, ImportBatch, KnowledgePoint, LearningAttempt, LearningEvent,
     LearningPointState, LearningSession, LearningTask, ParseTask, Question, QuestionEvidence,
-    QuestionKnowledgePoint, QuestionRevision, Source, SourceOrigin, UsageRecord,
+    QuestionKnowledgePoint, QuestionRevision, Source, SourceOrigin, TutoringTurn, UsageRecord,
 )
 from .retrieval import search_course_evidence
 from .schemas import (
@@ -38,7 +39,7 @@ from .schemas import (
     DocumentNodeRead, EvidenceBlockRead, EvidenceResearchPlan,
     GitHubImportInput, GitHubImportRead, GitHubLocationInput, GitHubPreviewRead,
     HealthRead, KnowledgePointRead, LearningAttemptInput, LearningGradeCorrectionInput, LearningGradeReviewInput,
-    LearningProgressInput, LearningHintRead, LearningSessionHistoryRead, LearningSessionSummaryRead, LearningSessionRead,
+    TutoringInput, TutoringHistoryRead, LearningProgressInput, LearningHintRead, LearningSessionHistoryRead, LearningSessionSummaryRead, LearningSessionRead,
     ParseTaskRead, QuestionCreateInput, QuestionRead, QuestionReviewInput,
     QuestionRevisionRead, QuestionUpdateInput, SourceBatchUploadRead, SourceMaterialUpdate, SourceOriginRead, SourceRead, SourceUploadRead,
     SourceRemovalInput, SourceRemovalRead,
@@ -237,6 +238,8 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
     async def lifespan(_: FastAPI):
         Base.metadata.create_all(bind=engine)
         migrate_schema()
+        with SessionLocal() as startup_db:
+            tutoring.recover_interrupted(startup_db)
         upload_dir.mkdir(parents=True, exist_ok=True)
         yield
 
@@ -316,7 +319,7 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         session_ids = select(LearningSession.id).where(LearningSession.course_id == course_id)
         question_ids = select(Question.id).where(Question.course_id == course_id)
         source_ids = select(Source.id).where(Source.course_id == course_id)
-        for model in (LearningAttempt, LearningEvent, LearningPointState, LearningTask):
+        for model in (TutoringTurn, LearningAttempt, LearningEvent, LearningPointState, LearningTask):
             db.execute(delete(model).where(model.session_id.in_(session_ids)))
         db.execute(delete(LearningSession).where(LearningSession.course_id == course_id))
         for model in (QuestionEvidence, QuestionRevision, QuestionKnowledgePoint):
@@ -1228,6 +1231,27 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
     def get_learning_history(session_id: str, db: Session = Depends(get_db)) -> dict:
         try:
             return read_session_history(db, session_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.get("/api/learning-sessions/{session_id}/tasks/{task_id}/tutoring", response_model=TutoringHistoryRead, tags=["learning"])
+    def get_tutoring(session_id: str, task_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return tutoring.history(db, session_id, task_id)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/tutoring", response_model=TutoringHistoryRead, tags=["learning"])
+    def send_tutoring(session_id: str, payload: TutoringInput, db: Session = Depends(get_db), gateway: ModelGateway = Depends(get_model_gateway)) -> dict:
+        try:
+            return tutoring.send(db, session_id, payload, gateway)
+        except LearningSessionError as error:
+            raise HTTPException(status_code=error.status_code, detail=error.message) from error
+
+    @app.post("/api/learning-sessions/{session_id}/tutoring/{turn_id}/received", response_model=TutoringHistoryRead, tags=["learning"])
+    def receive_tutoring(session_id: str, turn_id: str, db: Session = Depends(get_db)) -> dict:
+        try:
+            return tutoring.acknowledge(db, session_id, turn_id)
         except LearningSessionError as error:
             raise HTTPException(status_code=error.status_code, detail=error.message) from error
 

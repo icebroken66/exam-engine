@@ -1,6 +1,7 @@
 """OpenAI-compatible and Mock providers with structured output and usage accounting."""
 
 import base64
+from copy import copy
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
 import json
@@ -85,7 +86,15 @@ class MockProvider:
     def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
         evidence = user_prompt.split("<evidence>", 1)[-1].split("</evidence>", 1)[0].strip()
         excerpts = [part.strip() for part in evidence.replace("\r", "\n").split("\n") if part.strip()]
-        if "<course_scope>" in user_prompt:
+        if '"student_message"' in user_prompt and '"context_limits"' in user_prompt:
+            payload = json.loads(user_prompt.split("<output_json_schema>", 1)[0].strip())
+            content = json.dumps({
+                "message": "MOCK 流程示例：请描述卡住的具体步骤；该回复不用于真实教学效果判断。",
+                "action": "clarify", "reason": "Mock 仅检查当前题交流流程",
+                "evidence_ids": [item["id"] for item in payload["evidence"][:1]],
+                "help_level": "direction", "observation": "待确认学生卡点，未形成掌握证据", "uncertainty": "Mock 不验证真实教学内容",
+            }, ensure_ascii=False)
+        elif "<course_scope>" in user_prompt:
             course = user_prompt.split("<course>", 1)[-1].split("</course>", 1)[0].strip()
             evidence = user_prompt.split("<evidence>", 1)[-1].split("</evidence>", 1)[0].strip()
             topics = [topic.strip()[:120] for topic in re.findall(r"<topic>(.*?)</topic>", evidence) if topic.strip()][:12]
@@ -378,6 +387,7 @@ class OpenAIProvider:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.transport = transport
+        self.request_attempts = 2
 
     @staticmethod
     def _parse_response(response: httpx.Response) -> ProviderReply:
@@ -426,7 +436,7 @@ class OpenAIProvider:
 
     def _request(self, request_payload: dict) -> ProviderReply:
         last_error: ModelError | None = None
-        for attempt in range(2):
+        for attempt in range(self.request_attempts):
             try:
                 try:
                     with httpx.Client(
@@ -561,18 +571,19 @@ class ModelGateway:
         output_type: type[OutputT],
         max_tokens: int = 900,
         images: list[VisionImage] | None = None,
+        single_attempt: bool = False,
     ) -> tuple[OutputT, UsageRecord]:
         for attempt in range(2):
             try:
                 return self._generate_json_once(
                     db, course_id, purpose, system_prompt, user_prompt,
-                    output_type, max_tokens, images,
+                    output_type, max_tokens, images, single_attempt,
                 )
             except ModelError as error:
                 # Retry malformed JSON once; schema errors and exhausted transport
                 # retries keep their original boundary. Each attempt records usage
                 # and checks the budget independently.
-                if attempt or not (
+                if single_attempt or attempt or not (
                     error.output_truncated or isinstance(error.__cause__, json.JSONDecodeError)
                 ):
                     raise
@@ -590,6 +601,7 @@ class ModelGateway:
         output_type: type[OutputT],
         max_tokens: int = 900,
         images: list[VisionImage] | None = None,
+        single_attempt: bool = False,
     ) -> tuple[OutputT, UsageRecord]:
         schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
         user_prompt = (
@@ -620,10 +632,14 @@ class ModelGateway:
             db.refresh(record)
 
         started_at = datetime.now(timezone.utc)
+        provider = self.provider
+        if single_attempt and isinstance(provider, OpenAIProvider):
+            provider = copy(provider)
+            provider.request_attempts = 1
         try:
             reply = (
-                self.provider.complete_with_images(system_prompt, user_prompt, images, max_tokens)
-                if images else self.provider.complete(system_prompt, user_prompt, max_tokens)
+                provider.complete_with_images(system_prompt, user_prompt, images, max_tokens)
+                if images else provider.complete(system_prompt, user_prompt, max_tokens)
             )
             record.prompt_tokens = reply.usage.prompt_tokens
             record.completion_tokens = reply.usage.completion_tokens

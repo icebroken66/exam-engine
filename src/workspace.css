@@ -291,3 +291,17 @@ summary { cursor: pointer; font-weight: 600; }
 .coverage-search { display: grid; gap: 8px; margin: 20px 0; font-size: 14px; }
 .coverage-search input { padding: 10px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; width: 100%; box-sizing: border-box; font: inherit; }
 .coverage-pagination { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+
+.tutoring-panel { margin: 24px; padding: 20px; border: 1px solid #bed7d2; border-radius: 10px; background: #f8fbfa; min-width: 0; overflow-wrap: anywhere; }
+.tutoring-panel h3 { margin: 0; font-size: 19px; }
+.tutoring-panel > p { font-size: 14px; line-height: 1.8; }
+.tutoring-turns article { margin: 18px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: white; }
+.tutoring-student, .tutoring-reply { padding: 16px; }
+.tutoring-student { background: #edf3f6; }
+.tutoring-turns strong { display: block; margin-bottom: 8px; font-size: 14px; }
+.tutoring-help { display: block; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.tutoring-reply details { margin-top: 16px; font-size: 13px; }
+.tutoring-consent { display: flex; gap: 12px; align-items: start; font-size: 14px; line-height: 1.8; }
+.tutoring-consent input { margin-top: 5px; flex-shrink: 0; }
+.tutoring-panel > button { margin-top: 12px; }
+@media(max-width:600px) { .tutoring-panel { margin: 16px 12px; padding: 16px; } }

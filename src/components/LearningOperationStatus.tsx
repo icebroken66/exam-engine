@@ -6,6 +6,7 @@ const labels: Record<string, string> = {
   next: '正在根据最新资料安排下一步',
   answer: '正在保存作答并核对答案',
   hint: '正在读取当前题目的提示',
+  tutoring: '正在结合当前题、你的思路与资料进行带学',
   recovery: '正在核对服务器已保存的进度',
 }
 

@@ -12,7 +12,7 @@ from .model_gateway import ModelError, ModelGateway
 from .source_lifecycle import active_question, task_uses_removed_source
 from .models import (
     Course, DocumentNode, EvidenceBlock, LearningAttempt, LearningEvent, LearningPointState,
-    LearningSession, LearningTask, Question, QuestionEvidence, Source, UsageRecord,
+    LearningSession, LearningTask, TutoringTurn, Question, QuestionEvidence, Source, UsageRecord,
 )
 from .retrieval import query_terms
 from .schemas import (
@@ -78,9 +78,16 @@ def _progress_version(db: Session, session: LearningSession) -> str:
     hints = db.scalar(select(func.count(LearningEvent.id)).where(
         LearningEvent.task_id == session.current_task_id, LearningEvent.kind == "hint_requested",
     )) or 0
-    state = [session.id, session.current_task_id, session.stage, hints,
+    dialogue = list(db.execute(select(TutoringTurn.id, TutoringTurn.sequence, TutoringTurn.status).where(
+        TutoringTurn.task_id == session.current_task_id).order_by(TutoringTurn.sequence)).all())
+    state = [session.id, session.current_task_id, session.stage, hints, [list(row) for row in dialogue],
              {column.key: getattr(latest, column.key) for column in LearningAttempt.__table__.columns} if latest else None]
     return sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _assert_no_tutoring(db: Session, session: LearningSession) -> None:
+    if db.scalar(select(TutoringTurn.id).where(TutoringTurn.task_id == session.current_task_id, TutoringTurn.status == "running").limit(1)):
+        raise LearningSessionError(409, "当前题带学仍在生成，请先读取带学记录再作答或推进")
 
 
 def _assert_progress(db: Session, session: LearningSession, task_id: str | None, version: str | None) -> None:
@@ -149,6 +156,7 @@ def _task_read(db: Session, task: LearningTask) -> dict:
         "source_track": task.source_track,
         "visible_limitation": task.visible_limitation,
         "source_removed": task_uses_removed_source(db, task),
+        "help_exposures": int(db.scalar(select(func.count(LearningEvent.id)).where(LearningEvent.task_id == task.id, LearningEvent.kind == "hint_requested")) or 0),
         "rubric": (task.rubric or []) if graded else [],
         "prerequisites": task.prerequisites or [],
         "validation_status": task.validation_status,
@@ -848,7 +856,7 @@ def read_learning_session(db: Session, session_id: str) -> dict:
         LearningTask.session_id == session.id, LearningTask.kind.in_(list(passed)),
     )).all():
         last = _latest_attempt(db, item.id)
-        if last is not None and last.verdict == "correct":
+        if last is not None and last.verdict == "correct" and (item.kind != "retest" or last.hints_used == 0):
             passed[item.kind] += 1
     practice_completed, retest_passed = passed["practice"], passed["retest"]
     points = [
@@ -1084,6 +1092,7 @@ def submit_attempt(
 ) -> dict:
     session = _session(db, session_id)
     _assert_progress(db, session, expected_task_id, expected_progress_version)
+    _assert_no_tutoring(db, session)
     progress = _progress_version(db, session)
     task = _current_task(db, session)
     if task_uses_removed_source(db, task):
@@ -1402,6 +1411,8 @@ def _safe_plan(db: Session, session: LearningSession, task: LearningTask, latest
         plan = plan.model_copy(update={"knowledge_point": task.knowledge_point})
     if task.kind == "practice" and latest.verdict == "correct":
         plan = plan.model_copy(update={"action": "retest", "knowledge_point": task.knowledge_point})
+    if task.kind == "retest" and latest.verdict == "correct" and latest.hints_used > 0:
+        plan = plan.model_copy(update={"action": "retest", "knowledge_point": task.knowledge_point, "reason": "本次重测已接受帮助，需要换题进行无提示独立验证"})
     if task.kind == "retest" and latest.verdict == "incorrect":
         plan = plan.model_copy(update={"action": "remediation", "knowledge_point": task.knowledge_point})
     if plan.action == "complete":
@@ -1431,6 +1442,7 @@ def _safe_plan(db: Session, session: LearningSession, task: LearningTask, latest
 def advance_session(db: Session, session_id: str, gateway: ModelGateway, expected_task_id: str | None = None, expected_progress_version: str | None = None) -> dict:
     session = _session(db, session_id)
     _assert_progress(db, session, expected_task_id, expected_progress_version)
+    _assert_no_tutoring(db, session)
     progress = _progress_version(db, session)
     if session.stage == "completed":
         return read_learning_session(db, session.id)
@@ -1507,6 +1519,7 @@ def advance_session(db: Session, session_id: str, gateway: ModelGateway, expecte
 def request_hint(db: Session, session_id: str, expected_task_id: str | None = None, expected_progress_version: str | None = None) -> dict:
     session = _session(db, session_id)
     _assert_progress(db, session, expected_task_id, expected_progress_version)
+    _assert_no_tutoring(db, session)
     if session.stage not in ACTIVE_STAGES | {"remediating", "blocked"}:
         raise LearningSessionError(409, "当前阶段不能请求提示")
     task = _current_task(db, session)
