@@ -70,6 +70,16 @@ shutil.copytree('data/uploads', target / 'uploads')
 
 ## 实际小检查与第二科目
 
+正式评分结果见[信号评分与纠错](review-2026-11-09-signals-grading.md)。评分重放必须使用新建隔离目录、真实原件及明确付费开关，例如在PowerShell中运行：
+
+```powershell
+New-Item -ItemType Directory data/acceptance-grading-new
+New-Item -ItemType File data/acceptance-grading-new/ISOLATED_ACCEPTANCE
+.venv/Scripts/python.exe scripts/evaluate_grading.py --data-dir data/acceptance-grading-new --source "D:/study/信号与线性系统/sls答案汇总.pdf" --fixture evals/tutoring/signals-step-impulse.fixture.json --cases evals/tutoring/signals-step-impulse.grading.json --live
+```
+
+拒绝复用已有数据库及覆盖原报告。该命令最多对每个样本做一次正式评分；仅case显式提供review_reason时再复核。当前六样本没有review_reason，本轮复核与纠错是另行按实际结果开展，保存在私有证据。夹具只在隔离库提升为开发核查的validated，不改变仓库draft或正式题库，不证明自动校题质量；每次运行有API费用。原件不随仓库分发，请填写实际拥有且hash一致的路径。
+
 后续[PDF整页视觉回退评审](review-2026-11-09-pdf-render.md)记录矢量/乱码页渲染、AES依赖修复及真实视觉转录的成功与保存失败边界。
 
 最新结果见[小检查和信号评审](review-2026-11-09-checks-and-signals.md)。actual-checks.json是读取实际问题后人工写错配/改正输入的已发生记录，不是给任意新问题硬套的用例。conceptual-help文件检查完整自然语言示范→局部解释的当轮帮助。signals-step-impulse夹具基于用户授权本地原件，hash/页码可追溯；原件不分发，来源与夹具仍须核查，不能冒充整科端到端支持。运行 `scripts/check_tutoring_signals.py` 可独立做有限数值核查，无模型调用。

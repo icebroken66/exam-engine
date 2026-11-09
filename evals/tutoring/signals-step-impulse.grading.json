@@ -1,0 +1,8 @@
+[
+  {"id":"distribution-product","expected":"correct","basis":"完整分布乘积求导，包含单位冲激和普通导数两项。","answer":"零状态LTI的微分性质给出r2=dr1/dt。分布求导：r2=e^{-at}δ(t)-a e^{-at}u(t)=δ(t)-a e^{-at}u(t)，因为e^0=1。"},
+  {"id":"laplace-equivalent","expected":"correct","basis":"用拉普拉斯法等价给出s/(s+a)及其逆变换，不强制乘积求导这一方法。","answer":"用单边拉普拉斯变换且初始无储能：U(s)=1/s，R1(s)=1/(s+a)，所以H(s)=s/(s+a)=1-a/(s+a)。冲激输入的变换为1，故r2(t)=δ(t)-a e^{-at}u(t)。"},
+  {"id":"missing-impulse","expected":"incorrect","basis":"只覆盖正半轴，漏掉零点跳变的单位冲激。","answer":"u(t)在正半轴恒为1，求导得到r2(t)=-a e^{-at}u(t)，这就是全时域响应。"},
+  {"id":"wrong-sign","expected":"incorrect","basis":"指数函数导数符号错误。","answer":"输入求导则输出求导，所以r2(t)=δ(t)+a e^{-at}u(t)。"},
+  {"id":"wrong-jump","expected":"incorrect","basis":"零点跳变为1，冲激系数不能任意改为a。","answer":"由微分性质，r2(t)=aδ(t)-a e^{-at}u(t)，对任意a>0都成立。"},
+  {"id":"distribution-derivative-form","expected":"correct","basis":"题目要求全时域并简述过程，明确广义导数与跳变系数1的表达是等价的，未展开不等于漏冲激。","answer":"由LTI微分性质r2=D[e^{-at}u(t)]，D为分布导数。t<0响应为0，t>0普通部分是-a e^{-at}；在0处从0跳到1，因此还包含系数为1的单位冲激。这给出了完整的全时域分布响应。"}
+]
