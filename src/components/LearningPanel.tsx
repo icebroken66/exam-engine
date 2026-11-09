@@ -442,6 +442,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
             <span className="eyebrow">本轮结果</span>
             <h3>本轮学习已完成</h3>
             <p>已诊断 {session.diagnostic_completed} 个主题，完成 {session.practice_completed} 道练习，通过 {session.retest_passed} 次独立重测。可在学习记录中回看题目与作答，或开始新一轮诊断。</p>
+            <p>这只是本轮结果，不代表整门课已覆盖或长期掌握。<a href={`#/courses/${courseId}/analytics`}>查看未检查的资料与覆盖记录</a></p>
             <div className="learning-actions"><button className="secondary-action" type="button" onClick={restart} disabled={Boolean(busy) || recoveryRequired}><RotateCcw size={15} /> 开始新一轮诊断</button></div>
           </div>
         </div>

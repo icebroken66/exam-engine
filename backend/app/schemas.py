@@ -829,3 +829,51 @@ class LearningSessionSummaryRead(BaseModel):
 class LearningHintRead(BaseModel):
     hint: str
     session: LearningSessionRead
+
+
+class CoverageEvidenceRead(BaseModel):
+    id: str
+    page_number: int | None
+    excerpt: str
+
+
+class CoverageQuestionRead(BaseModel):
+    id: str
+    status: str
+    provenance: str
+
+
+class CoverageTaskRead(BaseModel):
+    id: str
+    session_id: str
+    knowledge_point: str
+    sub_skill: str
+    verdict: str
+
+
+class CoverageUnitRead(BaseModel):
+    source_id: str
+    source_name: str
+    source_status: str
+    node_id: str | None
+    title: str
+    page_start: int | None
+    page_end: int | None
+    text_status: Literal["available", "unavailable"]
+    semantic_status: Literal["untracked"]
+    evidence: list[CoverageEvidenceRead]
+    questions: list[CoverageQuestionRead]
+    topics: list[str]
+    diagnostic_tasks: list[CoverageTaskRead]
+    retest_tasks: list[CoverageTaskRead]
+
+
+class CourseCoverageRead(BaseModel):
+    course_id: str
+    source_count: int
+    unit_count: int
+    text_available_units: int
+    diagnostic_linked_units: int
+    retest_linked_units: int
+    units: list[CoverageUnitRead]
+    limitation: str

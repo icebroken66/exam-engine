@@ -156,5 +156,6 @@ test('完成页使用已完成主题数，不把生成题数或零次重测表�
   await page.goto(`/#/courses/${course.id}/learn`)
   await expect(page.locator('.learning-complete')).toContainText('已诊断 2 个主题，完成 0 道练习，通过 0 次独立重测')
   await expect(page.locator('.learning-complete')).not.toContainText('独立重测通过了')
+  await expect(page.getByRole('link', { name: '查看未检查的资料与覆盖记录' })).toHaveAttribute('href', `#/courses/${course.id}/analytics`)
   await expect(page.getByRole('button', { name: '开始新一轮诊断', exact: true })).toBeEnabled()
 })

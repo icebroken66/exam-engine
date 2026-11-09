@@ -22,6 +22,7 @@ import { examCountdown } from './lib/course'
 import { SourcePanel } from './components/SourcePanel'
 import { GitHubPanel } from './components/GitHubPanel'
 import { QuestionBankPanel } from './components/QuestionBankPanel'
+import { CoveragePanel } from './components/CoveragePanel'
 import { AnalyticsPanel } from './components/AnalyticsPanel'
 import { LearningPanel } from './components/LearningPanel'
 import { LearningHistoryPanel } from './components/LearningHistoryPanel'
@@ -309,7 +310,7 @@ function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDe
       </section>}
       {(visited.has('questions') || view === 'questions') && <div hidden={view !== 'questions'}><div className="view-heading"><div><h2>题目校准</h2><p>核对提取的题目和参考答案，为后续学习提供可靠依据。</p></div></div><QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => { setQuestionVersion(version => version + 1); refreshLearningContext() }} /></div>}
       {view === 'history' && <LearningHistoryPanel courseId={course.id} onResume={id => onNavigate('learn', id)} onChanged={refreshLearningContext} />}
-      {view === 'analytics' && <><div className="view-heading"><div><h2>考点概览</h2><p>查看现有资料中的考点分布，结合学习记录安排复习。</p></div></div><AnalyticsPanel courseId={course.id} reloadToken={questionVersion} /></>}
+      {view === 'analytics' && <><div className="view-heading"><div><h2>考点概览</h2><p>查看现有资料中的考点分布，结合学习记录安排复习。</p></div></div><CoveragePanel courseId={course.id} reloadToken={questionVersion} /><AnalyticsPanel courseId={course.id} reloadToken={questionVersion} /></>}
       {showDelete && <DeleteCourseDialog course={course} onClose={() => setShowDelete(false)} onDeleted={onDeleted} />}
     </div>
   )

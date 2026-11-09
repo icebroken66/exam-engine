@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .analytics import course_analytics, course_knowledge_points, sync_question_knowledge
+from .coverage import course_coverage
 from .completeness import course_completeness
 from .config import get_data_dir
 from .database import Base, engine, get_db, migrate_schema
@@ -32,7 +33,7 @@ from .retrieval import search_course_evidence
 from .schemas import (
     AgentExplanationContent, AgentExplanationInput, AgentExplanationRead,
     AgentSolutionContent, AgentSolutionRead, AgentSolveInput,
-    CourseAnalyticsRead, CourseArchiveUpdate, CourseCompletenessRead, CourseContextRead,
+    CourseCoverageRead, CourseAnalyticsRead, CourseArchiveUpdate, CourseCompletenessRead, CourseContextRead,
     CourseCreate, CourseDeleteInput, CourseRead, CourseScopeUpdate, CourseUsageRead,
     DocumentNodeRead, EvidenceBlockRead, EvidenceResearchPlan,
     GitHubImportInput, GitHubImportRead, GitHubLocationInput, GitHubPreviewRead,
@@ -1108,6 +1109,12 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if db.get(Course, course_id) is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         return course_knowledge_points(db, course_id)
+
+    @app.get("/api/courses/{course_id}/coverage", response_model=CourseCoverageRead, tags=["analytics"])
+    def get_course_coverage(course_id: str, db: Session = Depends(get_db)) -> dict:
+        if db.get(Course, course_id) is None:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        return course_coverage(db, course_id)
 
     @app.get("/api/courses/{course_id}/analytics", response_model=CourseAnalyticsRead, tags=["analytics"])
     def get_course_analytics(

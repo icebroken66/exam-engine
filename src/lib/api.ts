@@ -724,3 +724,41 @@ export function removeSource(sourceId: string, signature: string): Promise<Sourc
     body: JSON.stringify({ expected_signature: signature }),
   })
 }
+
+
+export interface CoverageTask {
+  id: string
+  session_id: string
+  knowledge_point: string
+  sub_skill: string
+  verdict: string
+}
+export interface CoverageUnit {
+  source_id: string
+  source_name: string
+  source_status: SourceStatus
+  node_id: string | null
+  title: string
+  page_start: number | null
+  page_end: number | null
+  text_status: 'available' | 'unavailable'
+  semantic_status: 'untracked'
+  evidence: { id: string; page_number: number | null; excerpt: string }[]
+  questions: { id: string; status: string; provenance: string }[]
+  topics: string[]
+  diagnostic_tasks: CoverageTask[]
+  retest_tasks: CoverageTask[]
+}
+export interface CourseCoverage {
+  course_id: string
+  source_count: number
+  unit_count: number
+  text_available_units: number
+  diagnostic_linked_units: number
+  retest_linked_units: number
+  limitation: string
+  units: CoverageUnit[]
+}
+export function getCourseCoverage(courseId: string): Promise<CourseCoverage> {
+  return request<CourseCoverage>(`/api/courses/${courseId}/coverage`, { signal: AbortSignal.timeout(15000) })
+}
