@@ -186,3 +186,86 @@ def test_tutoring_never_retries_invalid_json_or_transport(client, session_factor
     assert client.post(url(current), json=payload(current, 1, 'r2')).status_code == 504
     assert len(requests) == 1
     assert real_provider.request_attempts == 2
+
+def test_tutoring_reads_student_question_sources_without_changing_grading_anchors(client, session_factory, tmp_path):
+    from uuid import uuid4
+    current, provider = setup(client, session_factory, tmp_path)
+    with session_factory() as db:
+        task = db.get(LearningTask, current['current_task']['id'])
+        anchors = list(task.evidence_ids)
+        anchor = db.get(EvidenceBlock, anchors[0])
+        extra_id = str(uuid4())
+        db.add(EvidenceBlock(id=extra_id, source_id=anchor.source_id, node_id=anchor.node_id, ordinal=100, page_number=52,
+                            text='投影的结果中要去掉相同的行（避免重复行）。', content_hash='extra'))
+        db.commit()
+    original_complete = provider.complete
+    def cite_supplement(system_prompt, user_prompt, max_tokens):
+        reply = original_complete(system_prompt, user_prompt, max_tokens)
+        content = json.loads(reply.content)
+        content['evidence_ids'] = [extra_id]
+        return ProviderReply(json.dumps(content), reply.usage)
+    provider.complete = cite_supplement
+    request = payload(current)
+    request['message'] = '投影是否应该去掉重复行？请给出课件的定义。'
+    response = client.post(url(current), json=request)
+    assert response.status_code == 200, response.text
+    context = provider.calls[-1]
+    assert extra_id in context['retrieval']['supplemental_ids']
+    assert context['retrieval']['query'] == request['message']
+    assert next(e for e in context['evidence'] if e['id'] == extra_id)['page'] == 52
+    assert response.json()['turns'][0]['citations'][0]['evidence_id'] == extra_id
+    with session_factory() as db:
+        assert db.get(LearningTask, current['current_task']['id']).evidence_ids == anchors
+        assert db.query(LearningAttempt).count() == db.query(LearningPointState).count() == 0
+
+
+def test_supplement_changed_during_generation_is_not_published(client, session_factory, tmp_path):
+    from uuid import uuid4
+    current, provider = setup(client, session_factory, tmp_path)
+    with session_factory() as db:
+        task = db.get(LearningTask, current['current_task']['id'])
+        anchor = db.get(EvidenceBlock, task.evidence_ids[0])
+        extra_id = str(uuid4())
+        db.add(EvidenceBlock(id=extra_id, source_id=anchor.source_id, node_id=anchor.node_id, ordinal=100, page_number=52,
+                            text='投影结果去掉重复行。', content_hash='extra'))
+        db.commit()
+    def change():
+        assert extra_id in provider.calls[-1]['retrieval']['supplemental_ids']
+        with session_factory() as db:
+            db.get(EvidenceBlock, extra_id).text = 'changed while generation was in flight'
+            db.commit()
+    provider.hook = change
+    request = payload(current)
+    request['message'] = '投影去掉重复行吗？'
+    assert client.post(url(current), json=request).status_code == 409
+    assert read(client, current).json()['turns'][0]['status'] == 'stale'
+    with session_factory() as db:
+        assert db.query(LearningEvent).filter(LearningEvent.kind == 'hint_requested').count() == 0
+
+
+def test_supplement_deduplicates_text_and_excludes_removed_sources(client, session_factory, tmp_path):
+    from uuid import uuid4
+    from app.models import DocumentNode
+    from datetime import datetime, timezone
+    current, provider = setup(client, session_factory, tmp_path)
+    with session_factory() as db:
+        task = db.get(LearningTask, current['current_task']['id'])
+        anchor = db.get(EvidenceBlock, task.evidence_ids[0])
+        base_source = db.get(Source, anchor.source_id)
+        node = db.get(DocumentNode, anchor.node_id)
+        source = Source(course_id=base_source.course_id, original_name='removed.md', storage_key='removed.md', extension='.md', media_type='text/markdown',size_bytes=1,sha256='removed',status='ready',removed_at=datetime.now(timezone.utc))
+        db.add(source);db.flush()
+        removed_node = DocumentNode(id=str(uuid4()),source_id=source.id,title='投影',ordinal=1)
+        db.add(removed_node);db.flush()
+        removed_id = str(uuid4())
+        db.add(EvidenceBlock(id=removed_id,source_id=source.id,node_id=removed_node.id,ordinal=1,text='投影去掉重复行 定义',content_hash='removed'))
+        for index in range(5):
+            db.add(EvidenceBlock(id=str(uuid4()),source_id=anchor.source_id,node_id=node.id,ordinal=101+index,text='投影去掉重复行。',content_hash='duplicate'))
+        db.commit()
+    request = payload(current)
+    request['message'] = '投影去掉重复行的定义？'
+    assert client.post(url(current), json=request).status_code == 200
+    context = provider.calls[-1]
+    assert removed_id not in [e['id'] for e in context['evidence']]
+    assert len([e for e in context['evidence'] if e['text'] == '投影去掉重复行。']) == 1
+    assert len(context['retrieval']['supplemental_ids']) <= 3
