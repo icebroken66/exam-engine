@@ -3,6 +3,7 @@ import { getLearningHistory, listLearningSessions } from '../lib/api'
 import type { LearningSessionHistory, LearningSessionSummary } from '../lib/api'
 import { GradeReviewControls } from './GradeReviewControls'
 import { StudyContent } from './StudyContent'
+import { LearningEvidencePanel } from './LearningEvidencePanel'
 
 const stages: Record<string, string> = { completed: '已完成', diagnosing: '诊断中', practicing: '练习中', remediating: '补缺中', retesting: '重测中', blocked: '待恢复' }
 const verdicts: Record<string, string> = { correct: '正确', incorrect: '未通过', ungraded: '待确认' }
@@ -39,6 +40,7 @@ export function LearningHistoryPanel({ courseId, onChanged, onResume }: { course
   return <section className="history-panel" aria-labelledby="history-title">
     <div className="view-heading"><div><h2 id="history-title">学习记录</h2><p>回看每道题与每次作答，也可以复核和纠正历史判分。</p></div>
       <button className="secondary-action" onClick={() => setVersion(value => value + 1)}>刷新记录</button></div>
+    <LearningEvidencePanel courseId={courseId} reloadToken={version} onOpen={(sessionId, targetTask) => { setSelected(sessionId); setTaskId(targetTask) }} />
     {error && <p className="learning-error" role="alert">{error}</p>}
     {sessions.length > 0 && <label className="history-session-select">选择学习轮次<select value={selected} onChange={event => setSelected(event.target.value)}>
       {sessions.map((session, index) => <option key={session.id} value={session.id}>第 {sessions.length - index} 轮 · {date(session.created_at)} · {stages[session.stage] ?? session.stage}</option>)}

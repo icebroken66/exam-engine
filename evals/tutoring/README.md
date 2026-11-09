@@ -70,6 +70,8 @@ shutil.copytree('data/uploads', target / 'uploads')
 
 ## 实际小检查与第二科目
 
+最新进展见[跨轮次证据与复测建议](review-2026-11-09-cross-session.md)：课程级只读有效证据列表、规划器摘要、旧题去重及真实固定切面；隔天效果尚无真人证据。
+
 正式评分结果见[信号评分与纠错](review-2026-11-09-signals-grading.md)。评分重放必须使用新建隔离目录、真实原件及明确付费开关，例如在PowerShell中运行：
 
 ```powershell

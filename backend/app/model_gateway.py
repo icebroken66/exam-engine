@@ -204,13 +204,21 @@ class MockProvider:
             allowed = json.loads(user_prompt.split("<allowed_evidence>", 1)[1].split("</allowed_evidence>", 1)[0])
             topic = blueprint["knowledge_point"]
             action_label = {"diagnostic": "诊断", "practice": "变式练习", "retest": "独立重测"}.get(blueprint["action"], "诊断")
+            previous = json.loads(user_prompt.split("<previous_stems>", 1)[1].split("</previous_stems>", 1)[0])
+            stem = f"{action_label}：请说明“{topic}”的准确定义、关键组成和适用条件，并用一个自行构造的例子解释这些条件如何共同发挥作用。"
+            # Only distinguish synthetic flow fixtures; this is not a substantive real-world variant.
+            index = 1
+            base_stem = stem
+            while stem in previous:
+                index += 1
+                stem = f"Mock流程样本{index}：{base_stem}"
             content = json.dumps({
                 "knowledge_point": topic,
                 "sub_skill": blueprint["sub_skill"],
                 "cognitive_level": blueprint["cognitive_level"],
                 "difficulty_prior": blueprint["difficulty_prior"],
                 "question_type": "short_answer",
-                "stem": f"{action_label}：请说明“{topic}”的准确定义、关键组成和适用条件，并用一个自行构造的例子解释这些条件如何共同发挥作用。",
+                "stem": stem,
                 "options": [],
                 "answer": allowed[0]["text"][:4000],
                 "rubric": ["准确定义核心概念", "说明关键组成与适用条件", "例子与概念关系一致"],

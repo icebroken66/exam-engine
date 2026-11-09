@@ -676,6 +676,38 @@ class LearningGradeContent(BaseModel):
     missing_points: list[str] = Field(default=[], max_length=6)
 
 
+class PriorLearningEvidenceRead(BaseModel):
+    session_id: str
+    task_id: str
+    attempt_id: str
+    knowledge_point: str
+    sub_skill: str
+    kind: str
+    verdict: Literal["correct", "incorrect", "ungraded"]
+    hints_used: int
+    taken_at: datetime
+    grading_layer: str
+    evidence_version: str
+    usable: bool
+    exclusion_reason: str
+    recommendation: Literal["needs_review", "repair", "without_help", "due", "later"]
+    explanation: str
+    due_at: datetime | None
+
+
+class CourseLearningEvidenceRead(BaseModel):
+    course_id: str
+    current_version: str
+    total: int
+    usable_count: int
+    excluded_count: int
+    due_count: int
+    page: int
+    page_size: int
+    items: list[PriorLearningEvidenceRead]
+    limitation: str
+
+
 class LearningProgressInput(BaseModel):
     expected_task_id: str | None = Field(default=None, min_length=1, max_length=36)
     expected_progress_version: str | None = Field(default=None, min_length=64, max_length=64)

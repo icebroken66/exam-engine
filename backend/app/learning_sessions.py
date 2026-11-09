@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .learning import accept_model_grade, compute_mastery, grade_exact
+from .learning_evidence import prior_learning_context
 from .model_gateway import ModelError, ModelGateway
 from .source_lifecycle import active_question, task_uses_removed_source
 from .models import (
@@ -767,9 +768,8 @@ def _new_generated_task(
     candidate = _select_candidate(candidates, plan.knowledge_point)
     used_origin_ids = set(db.scalars(
         select(LearningTask.origin_question_id)
-        .where(LearningTask.session_id == session.id, LearningTask.origin_question_id.is_not(None))
-        .order_by(LearningTask.ordinal.desc())
-        .limit(8)
+        .join(LearningSession, LearningTask.session_id == LearningSession.id)
+        .where(LearningSession.course_id == course.id, LearningTask.origin_question_id.is_not(None))
     ).all())
     original = next(
         (question for question in candidate["questions"] if question["id"] not in used_origin_ids),
@@ -780,7 +780,10 @@ def _new_generated_task(
 
     origin = candidate["questions"][0] if candidate["questions"] else None
     generation_candidate = {**candidate, "adapt_from": origin} if origin else candidate
-    previous_stems = list(db.scalars(select(LearningTask.stem).where(LearningTask.session_id == session.id)).all())
+    previous_stems = list(db.scalars(select(LearningTask.stem).join(
+        LearningSession, LearningTask.session_id == LearningSession.id,
+    ).where(LearningSession.course_id == course.id, LearningTask.knowledge_point == plan.knowledge_point)
+      .order_by(LearningTask.created_at, LearningTask.id)).all())
     question, validation = _generate_validated_question(
         db, course, gateway, generation_candidate, plan, previous_stems,
     )
@@ -936,11 +939,14 @@ def _initial_plan(
         "topic_materials 标明每个主题有哪些资料类型；往年题可帮助识别实际考核方式，但不能代替概念证据。"
         "knowledge_point 必须原样来自 available_topics；action 必须是 diagnostic。"
         "sub_skill 要描述可观察能力，reason 要说明该主题为何适合作为首个学习证据。只输出规定 JSON。"
+        "prior_learning是其他轮次的有效作答摘要，不是永久掌握。优先关注未通过、提示后成功或到期复测；"
+        "有旧证据时在reason中说明具体依据，使用未见题或实质变式重新检查，不复制旧分数或免诊断。"
     )
     payload = {
         "scope": course.scope_text,
         "available_topics": topics,
         "topic_materials": {item["knowledge_point"]: item["material_types"] for item in candidates},
+        "prior_learning": prior_learning_context(db, course.id, set(topics)),
     }
     try:
         plan, _ = gateway.generate_json(
@@ -1361,6 +1367,7 @@ def _planner_payload(db: Session, session: LearningSession, candidates: list[dic
         "diagnostic_target": _diagnostic_target(candidates),
         "diagnostic_completed_topics": len(_diagnosed_topics(db, session.id)),
         "recent_history": history,
+        "prior_learning": prior_learning_context(db, session.course_id, {c["knowledge_point"] for c in candidates}, session.id),
         "point_states": [
             {
                 "knowledge_point": point.knowledge_point,
@@ -1390,6 +1397,8 @@ def _plan_next(
         "diagnostic_target 是本轮建议诊断主题数，diagnostic_completed_topics 是已诊断的不同主题数；优先形成精简覆盖，不无意义重复。"
         "knowledge_point 必须原样来自 available_topics。完成只在主要主题已有足够诊断且没有未解决薄弱点时选择。"
         "reason 必须引用具体学习证据。只输出规定 JSON。"
+        "prior_learning仅为其他轮次有效记录；可用于选择需补缺或复测的主题，不复制其掌握分数、"
+        "不把旧记录计入本轮完成条件，复测需未见题或实质变式。"
     )
     try:
         plan, _ = gateway.generate_json(

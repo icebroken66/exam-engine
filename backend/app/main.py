@@ -15,6 +15,7 @@ from .analytics import course_analytics, course_knowledge_points, sync_question_
 from . import tutoring
 from .coverage import course_coverage
 from .completeness import course_completeness
+from .learning_evidence import course_learning_evidence
 from .config import get_data_dir
 from .database import Base, SessionLocal, engine, get_db, migrate_schema
 from .exam_extraction import extract_exam_questions
@@ -34,7 +35,7 @@ from .retrieval import search_course_evidence
 from .schemas import (
     AgentExplanationContent, AgentExplanationInput, AgentExplanationRead,
     AgentSolutionContent, AgentSolutionRead, AgentSolveInput,
-    CourseCoverageRead, CourseAnalyticsRead, CourseArchiveUpdate, CourseCompletenessRead, CourseContextRead,
+    CourseCoverageRead, CourseAnalyticsRead, CourseArchiveUpdate, CourseCompletenessRead, CourseContextRead, CourseLearningEvidenceRead,
     CourseCreate, CourseDeleteInput, CourseRead, CourseScopeUpdate, CourseUsageRead,
     DocumentNodeRead, EvidenceBlockRead, EvidenceResearchPlan,
     GitHubImportInput, GitHubImportRead, GitHubLocationInput, GitHubPreviewRead,
@@ -1157,6 +1158,14 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
         if report is None:
             raise HTTPException(status_code=404, detail="课程不存在")
         return report
+
+    @app.get("/api/courses/{course_id}/learning-evidence", response_model=CourseLearningEvidenceRead, tags=["learning"])
+    def get_learning_evidence(course_id: str, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
+                              db: Session = Depends(get_db)) -> dict:
+        result = course_learning_evidence(db, course_id, page=page, page_size=page_size)
+        if result is None:
+            raise HTTPException(status_code=404, detail="课程不存在")
+        return result
 
     @app.get(
         "/api/courses/{course_id}/learning-context",
