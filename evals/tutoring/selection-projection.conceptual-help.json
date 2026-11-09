@@ -1,0 +1,10 @@
+[
+  {
+    "id": "selection-projection-complete-concept-then-local",
+    "messages": [
+      "不用公式，拿一张三行库存表，从判断条件到最后输出商品名完整走一遍。",
+      "现在只说筛选前若丢了数量这一列会怎样，不要重写查询或完整例子。"
+    ],
+    "review": "完整概念或同构示范即使没有代码/公式也worked_answer；下一轮只解释局部连接则step，不累计。"
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "sql-exemption-complete-concept-then-local",
+    "messages": [
+      "先不写SQL，用几条报关和免税名单，从匹配到最终输出完整演示一遍。",
+      "现在只说明EXISTS里为什么需要比较CID，不要给完整SQL或走完整示例。"
+    ],
+    "review": "完整概念或同构示范即使没有代码/公式也worked_answer；下一轮只解释局部连接则step，不累计。"
+  }
+]

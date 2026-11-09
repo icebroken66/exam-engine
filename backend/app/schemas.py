@@ -892,7 +892,7 @@ class TutoringReply(BaseModel):
     action: Literal["probe", "clarify", "hint", "explain", "example", "counterexample", "prerequisite", "check", "verify", "continue", "pause"]
     reason: str = Field(min_length=1, max_length=1000)
     evidence_ids: list[str] = Field(max_length=12)
-    help_level: Literal["none", "direction", "step", "worked_answer"] = Field(description="仅本轮message实际提供的帮助，不累计历史；none不会清除已记录帮助或恢复独立性。")
+    help_level: Literal["none", "direction", "step", "worked_answer"] = Field(description="仅按本轮message实际内容，不累计历史。完整概念方案或同构例子已走完全部关键操作并给出结果，即使没写代码/公式也标worked_answer；仅局部连接标step，起步方向标direction，无解题提示的交流标none。none不会清除历史帮助或恢复独立性。")
     observation: str = Field(max_length=1000)
     uncertainty: str = Field(max_length=1000)
 

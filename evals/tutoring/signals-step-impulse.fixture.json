@@ -1,0 +1,50 @@
+{
+  "id": "signals-step-impulse",
+  "source_sha256": "438c34fcc76696343f411fef7fd11f90351e40a4e1e2949b4bde21b615fb5f00",
+  "source_name": "sls答案汇总.pdf",
+  "anchor_pages": [
+    4,
+    5
+  ],
+  "definition_pages": [
+    4,
+    5
+  ],
+  "task": {
+    "knowledge_point": "LTI阶跃响应与冲激响应",
+    "sub_skill": "阶跃响应分布求导与零点跳变",
+    "cognitive_level": "apply",
+    "question_type": "short_answer",
+    "stem": "零状态线性时不变系统对e_1(t)=u(t)的响应为r_1(t)=exp(-a t)u(t)，其中a>0。求输入e_2(t)=delta(t)时的全时域响应r_2(t)，简述过程。注意：答案应包含t=0可能存在的冲激项。",
+    "options": [],
+    "reference_answer": "r_2(t)=delta(t)-a exp(-a t)u(t)。零状态LTI中对输入求导对应输出求导；对exp(-a t)u(t)作分布求导，乘积法则保留exp(0)delta(t)=delta(t)。仅t>0的普通导数不足以表示全时域响应。",
+    "remediation_answer": "r_2(t)=delta(t)-a exp(-a t)u(t)。零状态LTI中对输入求导对应输出求导；对exp(-a t)u(t)作分布求导，乘积法则保留exp(0)delta(t)=delta(t)。仅t>0的普通导数不足以表示全时域响应。",
+    "analysis": "r_2(t)=delta(t)-a exp(-a t)u(t)。零状态LTI中对输入求导对应输出求导；对exp(-a t)u(t)作分布求导，乘积法则保留exp(0)delta(t)=delta(t)。仅t>0的普通导数不足以表示全时域响应。",
+    "rubric": [
+      "零状态LTI微分性质：对输入求导对应对响应求导",
+      "对exp(-a t)与u(t)使用分布乘积求导，保留零点跳变产生的delta(t)",
+      "给出delta(t)-a exp(-a t)u(t)，不能只给t>0普通导数"
+    ],
+    "provenance": "adapted",
+    "answer_provenance": "source",
+    "validation_status": "draft",
+    "validation_notes": [
+      "题目与答案分别在本地作业汇总第1页和答案汇总第4/5页，已视读核对；a>0和全时域要求为改编明确条件。",
+      "开发侧原件与独立积分核查，不代表课程持有人确认或真人测试。"
+    ]
+  },
+  "answer_basis": [
+    "原件答案第4页推导r2=r1导数并保留delta项，第5页给出最终结论。",
+    "题目汇总PDF第1页题1-2.2说明LTI和起始无储能；该问题原页已视觉核对。",
+    "独立核查：delta(t)-a exp(-a t)u(t)与阶跃卷积，t>0积分为1-(1-exp(-a t))=exp(-a t)；只留指数导数积分得到exp(-a t)-1。"
+  ],
+  "typical_errors": [
+    "只算t>0普通导数而漏delta",
+    "认为u在t>0常数所以全时域导数为0",
+    "把delta当作零点处普通有限函数值"
+  ],
+  "transfer": {
+    "stem": "若零状态LTI阶跃响应变为(1-exp(-a t))u(t)，是否仍有delta项？",
+    "answer_basis": "原点连续且右极限为0，故冲激响应为a exp(-a t)u(t)，没有delta项。"
+  }
+}

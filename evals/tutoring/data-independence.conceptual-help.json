@@ -1,0 +1,10 @@
+[
+  {
+    "id": "data-independence-complete-concept-then-local",
+    "messages": [
+      "请用具体改动把甲乙从变化、需要调整的映像到结论各完整走一遍。",
+      "现在只解释映像这个词指什么，不要再判甲乙。"
+    ],
+    "review": "完整概念或同构示范即使没有代码/公式也worked_answer；下一轮只解释局部连接则step，不累计。"
+  }
+]

@@ -30,6 +30,24 @@ async function serve(page: Page, state: ReturnType<typeof fixture>, loseResponse
   })
 }
 
+test('信号公式支持模型LaTeX分隔符且保留代码示例', async ({ page }) => {
+  const state = fixture()
+  state.turns.push({ id: 'math-turn', task_id: 't1', sequence: 1, student_message: '请完整讲解', status: 'saved', mocked: true, delivered_at: '2026-11-09T00:00:02Z', citations: [], reply: { message: String.raw`输入 \(e_2(t)=\delta(t)\)。
+\[
+r_2(t)=\delta(t)-a e^{-at}u(t).
+\]
+代码示例：` + ' `\\(x\\)`', action: 'explain', help_level: 'worked_answer', reason: '完整求导', observation: '仅演示', uncertainty: '', evidence_ids: [] } })
+  await serve(page, state)
+  await page.goto(`/#/courses/${course.id}/learn`)
+  await expect(page.locator('.tutoring-reply .katex')).toHaveCount(2)
+  await expect(page.locator('.tutoring-reply .katex-display')).toHaveCount(1)
+  await expect(page.locator('.tutoring-reply .katex-error')).toHaveCount(0)
+  await expect(page.locator('.tutoring-reply code')).toHaveText('\\(x\\)')
+  await page.setViewportSize({ width: 390, height: 900 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+  expect(state.writes).toBe(0); expect(state.formal).toBe(0)
+})
+
 test('带学交流与正式提交分开，刷新恢复对话及送达记录', async ({ page }, testInfo) => {
   const state = fixture(); await serve(page, state)
   await page.goto(`/#/courses/${course.id}/learn`)

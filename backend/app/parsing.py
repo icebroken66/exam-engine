@@ -147,10 +147,11 @@ def parse_markdown(source_id: str, path: Path) -> ParseOutcome:
 
 
 def parse_pdf(source_id: str, path: Path) -> ParseOutcome:
-    parser_version = "pdf-v1"
+    parser_version = "pdf-v2"
     reader = PdfReader(path)
     nodes: list[ParsedNode] = []
     blocks: list[ParsedBlock] = []
+    damaged_pages: list[int] = []
     for ordinal, page in enumerate(reader.pages, start=1):
         node = ParsedNode(
             stable_id(source_id, parser_version, "page", ordinal),
@@ -160,8 +161,25 @@ def parse_pdf(source_id: str, path: Path) -> ParseOutcome:
             ordinal,
         )
         nodes.append(node)
-        blocks.extend(make_blocks(source_id, parser_version, node, page.extract_text() or ""))
-    return finish_outcome(parser_version, nodes, blocks)
+        text = page.extract_text() or ""
+        if re.search(r"[\ud800-\udfff]", text):
+            # Some PDF font maps expose UTF-16 pairs instead of Unicode scalars.
+            # Repair complete pairs, but never guess missing mathematical symbols.
+            try:
+                text = text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le")
+            except UnicodeDecodeError:
+                damaged_pages.append(ordinal)
+                text = ""
+        blocks.extend(make_blocks(source_id, parser_version, node, text))
+    outcome = finish_outcome(parser_version, nodes, blocks)
+    if not damaged_pages:
+        return outcome
+    return ParseOutcome(
+        parser_version, "needs_review",
+        "；".join(filter(None, [outcome.error,
+            f"第 {', '.join(map(str, damaged_pages))} 页存在无法还原的字符，未采用该页文本；请核对原件或转录公式"])),
+        outcome.nodes, outcome.blocks, {**outcome.stats, "damaged_text_pages": len(damaged_pages)},
+    )
 
 
 def iter_docx_content(document: DocxDocumentType):

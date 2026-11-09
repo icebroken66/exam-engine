@@ -1,0 +1,39 @@
+{
+  "kind": "manual_review_record",
+  "warning": "先生成并读取真实问题，再编写回答。本文件是已发生记录；不能将这些回答硬套到新生成的其他问题。",
+  "cases": [
+    {
+      "topic": "data-independence",
+      "initial_request": "请给一个只检查其中一步的小问题，并把这次要满足的条件写清楚。",
+      "actual_tutor_question": "小检查（只问一步）：只看甲，磁盘存储组织由堆改为索引组织；逻辑模式和用户视图保持不变，应用程序不受影响。此时应调整哪一级映像？（这次只答映像名称，不用判断独立性。）",
+      "mismatched_reply": "物理独立性。",
+      "actual_mismatch_feedback": "你回答的是“物理独立性”，但我这一步问的是应调整哪一级映像；两者相关，但不是同一个答案。请只补充映像名称。",
+      "corrected_reply": "应调整模式／内模式映像。",
+      "actual_corrected_feedback": "对，符合这一步的条件：存储组织改变而逻辑模式保持不变，应调整模式／内模式映像。",
+      "implementation_sha256": "fb232b2cc1b3fb7fd55deb33b43e29db292fd0e4823a8c6fa17fd56dfc005c3c",
+      "review": "本次按实际问题核对错配与局部正确；开发者编写回答，不是真人、独立前测或学习效果。"
+    },
+    {
+      "topic": "selection-projection",
+      "initial_request": "请给一个只检查其中一步的小问题，并把这次要满足的条件写清楚。",
+      "actual_tutor_question": "小检查（只看“选择”这一步）：给定库存(商品名, 仓库, 数量)，请写出筛选条件的逻辑表达式。必须同时满足：仓库=东区，且数量>10。本小问只写这两个条件如何连接，不写投影，也不写完整查询。",
+      "mismatched_reply": "仓库=东区 或 数量>10。",
+      "actual_mismatch_feedback": "你写的是“或”，但这次要求两个条件都满足。“或”允许只满足其中一个；要表达“仓库=东区”和“数量>10”必须同时成立，应把连接词改为“且”（∧）。请只改写这一步的条件表达式。",
+      "corrected_reply": "仓库=东区 且 数量>10。",
+      "actual_corrected_feedback": "对，这次写的“仓库=东区 且 数量>10”符合“两个条件都要满足”的要求。选择条件这一步已经明确；如果继续，下一小步可以只看：要判断这两个条件，筛选前哪些列必须还保留着？",
+      "implementation_sha256": "fb232b2cc1b3fb7fd55deb33b43e29db292fd0e4823a8c6fa17fd56dfc005c3c",
+      "review": "本次按实际问题核对错配与局部正确；开发者编写回答，不是真人、独立前测或学习效果。"
+    },
+    {
+      "topic": "sql-exemption",
+      "initial_request": "请给一个只检查其中一步的小问题，并把这次要满足的条件写清楚。",
+      "actual_tutor_question": "这次只检查“免税匹配”这一步，不写完整 SQL。条件是：一条 REPORT 记录只有在 WHITELIST 中找到 CID 和 PID 都相同的记录才算命中；即使名单里有重复项，也不能让这条报关记录多输出。你会选 EXISTS、普通 JOIN，还是 DISTINCT？简要说说理由即可。",
+      "mismatched_reply": "我选EXISTS，因为它会避免名单重复，所以子查询只匹配PID就行，不用再比较CID。",
+      "actual_mismatch_feedback": "你选 EXISTS 的理由抓住了“重复名单不扩增报关行数”这一点；但“避免重复”和“匹配正确国家”是两个不同条件，不能因此省略 CID。比如 C1 的报关记录 PID 为 P，而名单中只有 (C2, P)：只比较 PID 会误判为免税；还必须确认名单中的 CID 与这条报关记录的 CID 相同。这里先不写完整 SQL。",
+      "corrected_reply": "用EXISTS，同时核对W.CID=R.CID和W.PID=R.PID；它只判断有没有匹配项，名单重复不会把一条报关记录扩增。",
+      "actual_corrected_feedback": "这一步判断正确：用 EXISTS 检查 W.CID=R.CID 且 W.PID=R.PID，既核对了对应国家和商品，也不会因免税名单重复而扩增报关记录。这里只确认了免税匹配这一步，尚未检查完整查询的其他条件。",
+      "implementation_sha256": "fb232b2cc1b3fb7fd55deb33b43e29db292fd0e4823a8c6fa17fd56dfc005c3c",
+      "review": "本次按实际问题核对错配与局部正确；开发者编写回答，不是真人、独立前测或学习效果。"
+    }
+  ]
+}

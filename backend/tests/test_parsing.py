@@ -1,4 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from reportlab.pdfgen.canvas import Canvas
 
@@ -55,3 +58,25 @@ def test_pdf_uses_page_numbers_and_exposes_blank_pages(tmp_path: Path) -> None:
 
 def test_ids_change_with_source_identity() -> None:
     assert stable_id("a", "node") != stable_id("b", "node")
+
+
+def test_pdf_repairs_complete_utf16_pairs_without_changing_formula(monkeypatch):
+    page = SimpleNamespace(extract_text=lambda: "signal \ud835\udc65(t) = 2")
+    monkeypatch.setattr("app.parsing.PdfReader", lambda path: SimpleNamespace(pages=[page]))
+    outcome = parse_file("math", Path("unused.pdf"), ".pdf")
+    assert outcome.status == "ready"
+    assert outcome.blocks[0].text == "signal 𝑥(t) = 2"
+    assert outcome.blocks[0].text.encode("utf-8")
+
+
+@pytest.mark.parametrize("broken", ["\ud835", "\udc65"])
+def test_pdf_damaged_formula_keeps_page_for_review_without_using_partial_text(monkeypatch, broken):
+    pages = [SimpleNamespace(extract_text=lambda: f"Many readable words but missing symbol {broken}(t)"),
+             SimpleNamespace(extract_text=lambda: "Second page intact")]
+    monkeypatch.setattr("app.parsing.PdfReader", lambda path: SimpleNamespace(pages=pages))
+    outcome = parse_file("math", Path("unused.pdf"), ".pdf")
+    assert outcome.status == "needs_review"
+    assert len(outcome.nodes) == 2
+    assert [block.page_number for block in outcome.blocks] == [2]
+    assert outcome.stats["damaged_text_pages"] == outcome.stats["empty_nodes"] == 1
+    assert "无法还原的字符" in outcome.error
