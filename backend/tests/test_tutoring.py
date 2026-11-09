@@ -269,3 +269,36 @@ def test_supplement_deduplicates_text_and_excludes_removed_sources(client, sessi
     assert removed_id not in [e['id'] for e in context['evidence']]
     assert len([e for e in context['evidence'] if e['text'] == '投影去掉重复行。']) == 1
     assert len(context['retrieval']['supplemental_ids']) <= 3
+
+
+def test_vague_followup_retrieves_definition_using_task_and_student_history(client, session_factory, tmp_path):
+    from uuid import uuid4
+    current, provider = setup(client, session_factory, tmp_path)
+    with session_factory() as db:
+        task = db.get(LearningTask, current['current_task']['id'])
+        task.knowledge_point = '选择与投影'
+        task.sub_skill = '选择与投影'
+        anchor = db.get(EvidenceBlock, task.evidence_ids[0])
+        extra_id = str(uuid4())
+        db.add(EvidenceBlock(id=extra_id, source_id=anchor.source_id, node_id=anchor.node_id, ordinal=100,
+                            page_number=52, text='20\n投影（Projection）\n从关系中取指定属性列，去掉重复行。', content_hash='definition'))
+        for index in range(5):
+            db.add(EvidenceBlock(id=str(uuid4()), source_id=anchor.source_id, node_id=anchor.node_id,
+                                ordinal=101+index, page_number=60+index,
+                                text='其他区别\n更名运算\n为什么这个地方不行？课件上有投影这个词。', content_hash=f'noise-{index}'))
+        db.commit()
+    current = client.get(f"/api/learning-sessions/{current['id']}").json()
+    request = payload(current)
+    request['message'] = '我先只拿商品名，会把筛选要用的东西删掉吗？'
+    first = client.post(url(current), json=request)
+    assert first.status_code == 200, first.text
+    request = payload(first.json()['session'], 1, 'followup')
+    request['message'] = '为什么刚才那一步不行？课件上有直接支持这个区别的地方吗？'
+    second = client.post(url(current), json=request)
+    assert second.status_code == 200, second.text
+    context = provider.calls[-1]
+    assert extra_id in context['retrieval']['supplemental_ids']
+    assert context['retrieval']['history_messages'] == 1
+    assert '商品名' in context['retrieval']['contextual_query']
+    assert context['retrieval']['candidate_limit'] == 12
+    assert len(context['retrieval']['supplemental_ids']) <= 3

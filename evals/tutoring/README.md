@@ -1,5 +1,26 @@
 # 当前题带学回放
 
+## 三考点复查（2026-11-09）
+
+新增 `selection-projection`、`data-independence`、`sql-exemption` 三套 `*.fixture.json`、`*.baseline.json` 和 `*.heldout.json`。材料分别来自现有关系数据库课件、三级模式课件和回忆卷；原件不分发。夹具保存原件 hash、PDF 页码、改编题及答案依据、典型错误和迁移题。开发者对照原文与执行核对不等于课程持有人已经人工确认，更不等于真人测试；夹具为 draft，不能直接发布成已确认题库。
+
+SQL 夹具明确重复报关和重复免税名单的语义，避免将普通 JOIN、EXISTS、外层 DISTINCT 一概判作等价。运行 `.venv\Scripts\python.exe scripts/check_tutoring_sql.py` 可核对 32 组数据与三个反例；这是 SQLite 样本执行，不是所有方言的形式证明。课件只支持题意与数据定义，SQL 解法属于开发核查的补充，不能声称原卷提供了标准答案。
+
+可用 `--fixture evals/tutoring/data-independence.fixture.json` 替代 `--template-task-id`；仍须提供实际 `--source-id`，校验 hash 并从原件重新解析锚点页。首先保存 system 回放，不改产品提示词或检索。之后直接组有两种独立用途：
+
+```powershell
+# 先冻结当前系统（其余 --data-dir / --source-id 等参数同前）
+.venv\Scripts\python.exe scripts/evaluate_tutoring.py --data-dir data/acceptance-tutoring-eval --source-id ACTUAL_SOURCE_ID --fixture evals/tutoring/data-independence.fixture.json --cases evals/tutoring/data-independence.baseline.json --label frozen --group system --live
+# 实际上下文完全一致：直接导师处理冻结的每轮输入，包括原系统提问和证据 ID
+.venv\Scripts\python.exe scripts/evaluate_tutoring.py --data-dir data/acceptance-tutoring-eval --source-id ACTUAL_SOURCE_ID --fixture evals/tutoring/data-independence.fixture.json --cases evals/tutoring/data-independence.baseline.json --label equal --group direct --evidence-from data/acceptance-tutoring-eval/frozen-system.json --live
+```
+
+`--evidence-from` 会核对原件、Provider、模型、输出预算、题目、初始作答与每条消息，并原样使用冻结上下文。它是逐轮替代回复的策略比较（teacher-forced），不是直接导师自行发展出的连续教学；直接组自己的上一回复不会混入下一轮，因而不能据此比较独立对话质量。省略该参数则是完整原件的连续直接带学，单独报告。冻结报告记录提示词、输出 schema、实现及回放工具 hash，失败输入也保存，避免只留下成功结果。
+
+`heldout` 为后续保留样本，先冻结文件再运行，勿用于提示词调试。小检查错配需看实际生成的问题后再编写错配回答，不能把固定回复硬套到不同问题上。迁移题的评审答案不得出现在学生侧输入；完整方案及原始记录表见 [真人试用包](trial-protocol.md)。三考点是同一课程内的不同技能，不能称跨学科验证。
+
+本轮实际结果与未通过项见 [三考点评审](review-2026-11-09-three-topics.md)。不能将夹具已准备等同于全部场景已经跑完。
+
 这是开发验收工具，不是学习收益评测。固定学生消息用于检查来源、条件遗漏、小检查反馈、换讲法及暂停；不由模型模拟学生或自行打分。条件不同的后续消息必须单独检查是否仍适配，不能只比较动作名称或统计“正确率”。
 
 `relational-algebra.json` 包含六个场景。它针对库存选择 / 投影题，需要配一份可核查的本地真实课件及已存在的题目模板；仓库不附私有原始资料或验收库。可复制 JSON 自建其他考点样例。`answer` 是可选的正式初始作答；省略时只比较学生在交流中表达的思路，不能声称已经保存过错误作答。

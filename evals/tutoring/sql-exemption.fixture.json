@@ -1,0 +1,49 @@
+{
+  "id": "sql-exemption",
+  "source_sha256": "71f4c38487ab6b6f5a575e742964db6ef0fb3549980b0429ccbfbdffe740d16e",
+  "source_name": "数据库系统原理期末试卷（回忆版）.pdf",
+  "anchor_pages": [
+    2
+  ],
+  "definition_pages": [
+    2
+  ],
+  "task": {
+    "knowledge_point": "SQL免税查询与等价表达",
+    "sub_skill": "SQL免税查询与等价表达",
+    "cognitive_level": "apply",
+    "question_type": "short_answer",
+    "stem": "REPORT(PID,CID,TPID,PRICE,QTY)记录报关，WHITELIST(CID,PID)表示相应国家商品免税。查询来自C1且在对应国家免税名单中的报关记录，逐条输出PID和PRICE，按PID降序。使用单条SQL、不得用CTE。相同报关记录可重复，免税名单也可能重复；须保留每条报关记录且不要因重复名单扩增行数。",
+    "options": [],
+    "reference_answer": "SELECT R.PID, R.PRICE FROM REPORT R WHERE R.CID = 'C1' AND EXISTS (SELECT 1 FROM WHITELIST W WHERE W.CID = R.CID AND W.PID = R.PID) ORDER BY R.PID DESC;",
+    "remediation_answer": "SELECT R.PID, R.PRICE FROM REPORT R WHERE R.CID = 'C1' AND EXISTS (SELECT 1 FROM WHITELIST W WHERE W.CID = R.CID AND W.PID = R.PID) ORDER BY R.PID DESC;",
+    "analysis": "限定REPORT.CID=C1；免税匹配同时使用CID与PID；EXISTS避免重复免税名单扩增结果，同时保留原报关重复行；输出PID/PRICE且PID降序；允许经核查等价写法",
+    "rubric": [
+      "限定REPORT.CID=C1",
+      "免税匹配同时使用CID与PID",
+      "EXISTS避免重复免税名单扩增结果，同时保留原报关重复行",
+      "输出PID/PRICE且PID降序；允许经核查等价写法"
+    ],
+    "provenance": "adapted",
+    "answer_provenance": "ai",
+    "validation_status": "draft",
+    "validation_notes": [
+      "验收夹具；开发核查不等于课程持有人确认，勿作为已人工确认题库发布"
+    ]
+  },
+  "answer_basis": [
+    "PDF 第2页第三大题第1小题及表定义；本夹具明确补充重复行语义，属于改编",
+    "EXISTS参考查询以Python逐报关记录过滤独立核对；运行 scripts/check_tutoring_sql.py 留执行结果",
+    "JOIN只按PID会混入其他国家；普通JOIN可能因重复名单扩增；外层DISTINCT可能错误合并不同报关记录",
+    "开发执行核查不冒充原卷标准答案或真人审核"
+  ],
+  "typical_errors": [
+    "免税子查询漏CID关联",
+    "JOIN被重复名单扩增",
+    "外层DISTINCT误消除报关重复行"
+  ],
+  "transfer": {
+    "stem": "改查C2未免税的报关记录，保留原记录重数；免税名单可能含NULL。用NOT EXISTS作答，并解释NOT IN可能不等价的条件。",
+    "answer_basis": "相关子查询同时匹配CID/PID并NOT EXISTS；NOT IN子查询出现NULL会引入UNKNOWN而误滤非匹配值。"
+  }
+}

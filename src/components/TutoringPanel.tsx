@@ -27,7 +27,7 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
   }
   async function read() {
     setBusy(true); setError('')
-    try { apply(await getTutoring(session.id, task.id)); setNotice('已读取服务器带学记录；不会自动重发消息。') }
+    try { apply(await getTutoring(session.id, task.id)); setNotice('') }
     catch { if (live.current) { setHistory(null); setError('带学记录暂时无法读取。先重读，避免重复请求。') } }
     finally { if (live.current) setBusy(false) }
   }
@@ -60,17 +60,8 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
   }
   const running = history?.turns.some(turn => turn.status === 'running') ?? false
   const needsConsent = task.kind === 'retest' && !history?.retest_help_enabled
-  return <section className="tutoring-panel" aria-labelledby="tutoring-title">
-    <h3 id="tutoring-title">围绕当前题带学</h3>
-    <p>可以讲你的思路、指出没懂的步骤、要求直接解释或质疑判分。这里发送的是交流，不会自动提交答案或计为掌握；正式作答仍在题目区提交。</p>
-    <p>带学回复保存后可恢复，帮助会留痕，之后答对不再冒充本题的无提示独立成功。小检查只作教学观察。</p>
-    {needsConsent && <label className="tutoring-consent"><input type="checkbox" checked={allowHelp} disabled={busy || disabled} onChange={event => setAllowHelp(event.target.checked)} />我选择将本次独立重测转为带学，本题之后的作答不再计为无提示重测；不会自动判错或通过。</label>}
-    {error && <p role="alert">{error}</p>}
-    {notice && <p role="status">{notice}</p>}
-    {busy && <LearningOperationStatus operation="tutoring" />}
-    {running && <p role="status">服务器仍在生成这条带学回复，请稍后读取记录。不要重复发送。</p>}
-    <button type="button" className="secondary-action" disabled={busy || disabled} onClick={() => void read()}>读取带学记录</button>
-    <div className="tutoring-turns">{history?.turns.map(turn => <article key={turn.id}>
+  function renderTurn(turn: TutoringHistory['turns'][number]) {
+    return <article key={turn.id}>
       <div className="tutoring-student"><strong>你的交流</strong><StudyContent>{turn.student_message}</StudyContent></div>
       {turn.reply ? <div className="tutoring-reply"><strong>{actions[turn.reply.action] ?? turn.reply.action}{turn.mocked ? ' · MOCK 流程演示' : ''}</strong><span className="tutoring-help">{helpLabels[turn.reply.help_level] ?? turn.reply.help_level}</span>
         <StudyContent>{turn.reply.message}</StudyContent>
@@ -78,9 +69,27 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
         <details><summary>查看教学依据与待确认观察</summary><p>{turn.reply.reason}</p>{turn.reply.observation && <p>教学观察（不计掌握）：{turn.reply.observation}</p>}
           {turn.citations.map(citation => <blockquote key={citation.evidence_id}><p>{citation.excerpt}</p><a href={`/api/sources/${citation.source_id}/file?inline=true${citation.page_number ? `#page=${citation.page_number}` : ''}`} target="_blank" rel="noreferrer">{citation.source_name} · {citation.node_title}</a></blockquote>)}
         </details></div> : <p>{turn.status === 'running' ? '回复正在生成' : turn.error || '此回复已过期，未发布到当前题'}</p>}
-    </article>)}</div>
-    <label className="answer-field"><span>和导师交流当前题</span><textarea rows={3} value={message} disabled={busy || disabled || running} onChange={event => { setMessage(event.target.value); try { sessionStorage.setItem(`tutoring:${task.id}`, event.target.value) } catch { /* optional draft */ } }} placeholder="例如：我想先投影再选择，但第二步不知道还剩哪些列。" maxLength={4000} /></label>
+    </article>
+  }
+  return <section className="tutoring-panel" aria-labelledby="tutoring-title">
+    <h3 id="tutoring-title">围绕当前题带学</h3>
+    <p className="tutoring-boundary">交流不提交答案、不计掌握；回复保存后计入本题帮助。</p>
+    <details className="tutoring-guide"><summary>带学怎么用与独立性说明</summary>
+      <p>讲你的思路、没懂的步骤，要求直接解释或质疑判分。小检查只作教学观察；帮助后答对不能算本题无提示独立成功。回复保存后可恢复，送达未确认也保守记录帮助。</p>
+      <p>对判分有异议可使用题目区的“对判分有疑问？复核或纠正”；对话不会改写成绩。</p>
+    </details>
+    {needsConsent && <label className="tutoring-consent"><input type="checkbox" checked={allowHelp} disabled={busy || disabled} onChange={event => setAllowHelp(event.target.checked)} />我选择将本次独立重测转为带学，本题之后的作答不再计为无提示重测；不会自动判错或通过。</label>}
+    {error && <p role="alert">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
+    {busy && <LearningOperationStatus operation="tutoring" />}
+    {running && <p role="status">服务器仍在生成这条带学回复，请稍后读取记录。不要重复发送。</p>}
+    <button type="button" className="secondary-action" disabled={busy || disabled} onClick={() => void read()}>读取带学记录</button>
+    <div className="tutoring-turns">
+      {history && history.turns.length > 1 && <details className="tutoring-older"><summary>较早交流（{history.turns.length - 1} 条）</summary>{history.turns.slice(0, -1).map(renderTurn)}</details>}
+      <div id="latest-tutoring" tabIndex={-1} aria-label="最新交流">{history?.turns.slice(-1).map(renderTurn)}</div>
+    </div>
+    <label className="answer-field"><span>和导师交流当前题</span><textarea rows={3} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); if (!needsConsent || allowHelp) void send() } }} value={message} disabled={busy || disabled || running} onChange={event => { setMessage(event.target.value); try { sessionStorage.setItem(`tutoring:${task.id}`, event.target.value) } catch { /* optional draft */ } }} placeholder="例如：我想先投影再选择，但第二步不知道还剩哪些列。" maxLength={4000} /></label>
     <button className="primary-action" type="button" disabled={busy || disabled || running || !history || !message.trim() || (needsConsent && !allowHelp)} onClick={() => void send()}>{busy ? '正在交流…' : '发送带学消息（不提交答案）'}</button>
-    <p>对判分有异议可使用题目区的“对判分有疑问？复核或纠正”；带学对话不会改写成绩。回到原来的正式提交或下一步按钮可继续学习。</p>
+    <small>Ctrl / ⌘ + Enter 发送交流；正式作答请返回题目区。</small>
   </section>
 }

@@ -83,6 +83,13 @@ const eventLabels: Record<string, string> = {
 
 const stages = ['diagnosing', 'remediating', 'practicing', 'retesting']
 
+function focusLearningArea(selector: string) {
+  const area = document.querySelector<HTMLElement>(selector)
+  const target = area?.matches('form') ? area.querySelector<HTMLElement>('textarea:not(:disabled), input:not(:disabled)') ?? area : area
+  target?.scrollIntoView({ block: 'start' })
+  target?.focus({ preventScroll: true })
+}
+
 function stageIndex(session: LearningSession) {
   if (session.stage === 'completed') return 4
   return Math.max(0, stages.indexOf(session.stage))
@@ -421,6 +428,15 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
 
       {error && <div className="learning-error" role="alert">{error}</div>}
 
+      {task && session.stage !== 'completed' && session.stage !== 'remediating' && <nav className="learning-jumps" aria-label="当前题快捷导航">
+        <button type="button" onClick={() => focusLearningArea('#current-question')}>当前题</button>
+        <button type="button" onClick={() => focusLearningArea('#formal-answer')}>正式作答</button>
+        {!task.source_removed && <>
+          <button type="button" onClick={() => focusLearningArea('.tutoring-panel textarea')}>带学交流</button>
+          <button type="button" onClick={() => focusLearningArea('#latest-tutoring')}>最新交流</button>
+        </>}
+      </nav>}
+
       {session.stage === 'completed' ? (
         <div className="learning-complete">
           <CheckCircle2 size={38} />
@@ -456,7 +472,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
         </div>
       ) : task ? (
         <div className="learning-task-card">
-          <div className="task-heading">
+          <div className="task-heading" id="current-question" tabIndex={-1}>
             <div>
               <span className="task-kicker">{taskLabel(task)} · {task.knowledge_point}</span>
               <StudyContent>{task.stem}</StudyContent>
@@ -482,7 +498,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
             <div className="task-rubric"><span className="mini-label">评分要点</span><ul>{task.rubric.map((point) => <li key={point}>{point}</li>)}</ul></div>
           )}
 
-          <form onSubmit={submit}>
+          <form onSubmit={submit} id="formal-answer" tabIndex={-1}>
             {graded && attempt && <div className="saved-answer" role="region" aria-label="已保存的作答"><span className="mini-label">已保存的作答</span><StudyContent>{attempt.answer}</StudyContent><small>以下判分对应这份服务器记录。</small></div>}
             {task.options.length > 0 ? (
               <div className="learning-options" role="group" aria-label={task.question_type === 'multiple_choice' ? '请选择全部正确答案' : '请选择答案'}>

@@ -47,8 +47,10 @@ def search_course_evidence(
     course_id: str,
     question: str,
     limit: int = 3,
+    *, focus: str = "",
 ) -> list[RetrievedEvidence]:
     terms = query_terms(question)
+    focus_terms = query_terms(focus)
     if not terms:
         return []
     rows = db.execute(
@@ -69,6 +71,12 @@ def search_course_evidence(
         # Longer exact terms and distinctive English words contribute more than generic bigrams.
         weight = sum(min(len(term), 6) for term in matched)
         score = weight / sum(min(len(term), 6) for term in terms)
+        if focus_terms:
+            # A bounded topical tie-breaker for dialogue. Other retrieval callers
+            # keep their existing ranking. Definitions often live in page headings.
+            heading = f"{node_title}\n" + "\n".join(block.text.splitlines()[:3])
+            topical = sum(min(len(term), 6) for term in focus_terms if term in heading.casefold())
+            score += 0.2 * topical / sum(min(len(term), 6) for term in focus_terms)
         ranked.append(RetrievedEvidence(
             evidence_id=block.id,
             source_id=source.id,
