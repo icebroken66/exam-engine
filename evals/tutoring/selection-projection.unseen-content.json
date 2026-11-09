@@ -1,0 +1,17 @@
+[
+  {
+    "id": "unseen-full-then-stop",
+    "messages": [
+      "这次不要只给提示，麻烦把当前题的答案和推导完整说明。",
+      "我先去吃饭，讲解到此就好，不用复述刚才的结论。"
+    ],
+    "review": "完整讲解worked_answer；明确停止不复述答案，当前none但累计帮助保留。"
+  },
+  {
+    "id": "unseen-evidence-content",
+    "messages": [
+      "请把题干要求与课件依据一条条对应给我看，哪条只是题里设定的也要说清。"
+    ],
+    "review": "实际含解法或最终结论就按内容标记帮助，不能因verify自动none。"
+  }
+]

@@ -19,13 +19,14 @@ class TutorProvider:
         self.calls = []
         self.hook = hook
         self.invalid = invalid
+        self.help_level = "step"
 
     def complete(self, system_prompt, user_prompt, max_tokens):
         context = json.loads(user_prompt.split("<output_json_schema>")[0].strip())
         self.calls.append(context)
         if self.hook:
             self.hook()
-        return ProviderReply(json.dumps(dict(message="请先指出投影后还保留哪几列。", action="check", reason="检查中间结果", evidence_ids=["foreign"] if self.invalid else [context["evidence"][0]["id"]], help_level="step", observation="尚待确认", uncertainty="不能据此判断掌握")), TokenUsage(10, 20))
+        return ProviderReply(json.dumps(dict(message="请先指出投影后还保留哪几列。", action="check", reason="检查中间结果", evidence_ids=["foreign"] if self.invalid else [context["evidence"][0]["id"]], help_level=self.help_level, observation="尚待确认", uncertainty="不能据此判断掌握")), TokenUsage(10, 20))
 
 
 def setup(client, session_factory, tmp_path):
@@ -91,8 +92,21 @@ def test_retest_requires_explicit_consent_then_marks_real_attempt_helped(client,
     current = client.get(f"/api/learning-sessions/{current['id']}").json()
     assert client.post(url(current), json=payload(current)).status_code == 409
     assert not provider.calls
+    provider.help_level = "worked_answer"
     response = client.post(url(current), json=payload(current, allow_retest_help=True))
     assert response.status_code == 200, response.text
+    after = response.json()["session"]
+    provider.help_level = "none"
+    pause = payload(after, 1, "pause-after-answer")
+    pause["message"] = "今天先暂停，不用继续讲。"
+    response = client.post(url(current), json=pause)
+    assert response.status_code == 200, response.text
+    assert [t["reply"]["help_level"] for t in response.json()["turns"]] == ["worked_answer", "none"]
+    assert provider.calls[-1]["history"][0]["tutor"]["help_level"] == "worked_answer"
+    with session_factory() as db:
+        events = list(db.scalars(select(LearningEvent).where(LearningEvent.task_id == after["current_task"]["id"], LearningEvent.kind == "hint_requested")))
+        assert {event.payload.get("help_level") for event in events} >= {"worked_answer", "none"}
+        assert db.query(LearningAttempt).count() == db.query(LearningPointState).count() == 0
     after = response.json()["session"]
     formal = client.post(f"/api/learning-sessions/{current['id']}/attempts", json={"answer":"正确","duration_seconds":1,"expected_task_id":after["current_task"]["id"],"expected_progress_version":after["progress_version"]})
     assert formal.status_code == 200, formal.text

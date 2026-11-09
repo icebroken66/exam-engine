@@ -63,7 +63,7 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
   function renderTurn(turn: TutoringHistory['turns'][number]) {
     return <article key={turn.id}>
       <div className="tutoring-student"><strong>你的交流</strong><StudyContent>{turn.student_message}</StudyContent></div>
-      {turn.reply ? <div className="tutoring-reply"><strong>{actions[turn.reply.action] ?? turn.reply.action}{turn.mocked ? ' · MOCK 流程演示' : ''}</strong><span className="tutoring-help">{helpLabels[turn.reply.help_level] ?? turn.reply.help_level}</span>
+      {turn.reply ? <div className="tutoring-reply"><strong>{actions[turn.reply.action] ?? turn.reply.action}{turn.mocked ? ' · MOCK 流程演示' : ''}</strong><span className="tutoring-help">本轮：{helpLabels[turn.reply.help_level] ?? turn.reply.help_level}</span>
         <StudyContent>{turn.reply.message}</StudyContent>
         {turn.reply.uncertainty && <p>仍待核对：{turn.reply.uncertainty}</p>}
         <details><summary>查看教学依据与待确认观察</summary><p>{turn.reply.reason}</p>{turn.reply.observation && <p>教学观察（不计掌握）：{turn.reply.observation}</p>}
@@ -75,7 +75,7 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
     <h3 id="tutoring-title">围绕当前题带学</h3>
     <p className="tutoring-boundary">交流不提交答案、不计掌握；回复保存后计入本题帮助。</p>
     <details className="tutoring-guide"><summary>带学怎么用与独立性说明</summary>
-      <p>讲你的思路、没懂的步骤，要求直接解释或质疑判分。小检查只作教学观察；帮助后答对不能算本题无提示独立成功。回复保存后可恢复，送达未确认也保守记录帮助。</p>
+      <p>讲你的思路、没懂的步骤，要求直接解释或质疑判分。小检查只作教学观察；帮助后答对不能算本题无提示独立成功。回复保存后可恢复，送达未确认也保守记录帮助。每条标签表示导师标记的当轮帮助；“对话支持”不会清除本题过去的帮助记录或恢复独立性。</p>
       <p>对判分有异议可使用题目区的“对判分有疑问？复核或纠正”；对话不会改写成绩。</p>
     </details>
     {needsConsent && <label className="tutoring-consent"><input type="checkbox" checked={allowHelp} disabled={busy || disabled} onChange={event => setAllowHelp(event.target.checked)} />我选择将本次独立重测转为带学，本题之后的作答不再计为无提示重测；不会自动判错或通过。</label>}
