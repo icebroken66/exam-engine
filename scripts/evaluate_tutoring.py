@@ -89,7 +89,7 @@ def main():
                   code_revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                   implementation_sha256=sha256((ROOT / "backend/app/tutoring.py").read_bytes()).hexdigest(),
                   file_hashes={name: sha256((ROOT / name).read_bytes()).hexdigest() for name in
-                               ["scripts/evaluate_tutoring.py", "backend/app/retrieval.py", "backend/app/model_gateway.py",
+                               ["scripts/evaluate_tutoring.py", "backend/app/learning_sessions.py", "backend/app/course_context.py", "backend/app/learning_questions.py", "backend/app/learning_reads.py", "backend/app/learning_grading.py", "backend/app/session_access.py", "backend/app/learning_evidence.py", "backend/app/retrieval.py", "backend/app/model_gateway.py",
                                 "backend/app/parsing.py", "backend/app/schemas.py"]},
                   cases_sha256=sha256(args.cases.read_bytes()).hexdigest(), fixture=fixture,
                   comparison="same_context" if args.evidence_from else "raw_material",

@@ -6,7 +6,8 @@ import pytest
 from sqlalchemy import select
 
 from app.learning_evidence import course_learning_evidence, prior_learning_context
-from app.learning_sessions import _course_signature, _initial_plan, _planner_payload, correct_attempt
+from app.course_context import course_signature as _course_signature
+from app.learning_sessions import _initial_plan, _planner_payload, correct_attempt
 from app.model_gateway import ModelGateway, MockProvider
 from app.models import Course, DocumentNode, EvidenceBlock, LearningAttempt, LearningSession, LearningTask, Source, UsageRecord
 
@@ -153,7 +154,7 @@ def test_initial_planner_receives_valid_prior_context_without_importing_scores(s
 
 
 def test_new_round_skips_exposed_original_across_sessions(session_factory, monkeypatch):
-    from app import learning_sessions
+    from app import learning_questions
     from app.models import Question
     from app.schemas import LearningPlanContent
     with session_factory() as db:
@@ -165,9 +166,9 @@ def test_new_round_skips_exposed_original_across_sessions(session_factory, monke
         db.add_all([seen, fresh]); db.flush(); task.origin_question_id = seen.id
         new_session = LearningSession(course_id=course.id, stage="diagnosing")
         db.add(new_session); db.commit()
-        monkeypatch.setattr(learning_sessions, "_new_original_task", lambda *args: args[5]["id"])
+        monkeypatch.setattr(learning_questions, "_new_original_task", lambda *args: args[5]["id"])
         plan = LearningPlanContent(action="diagnostic", knowledge_point="信号微分", sub_skill="零点跳变",
                                    cognitive_level="apply", difficulty_prior="basic", reason="检查保持")
-        selected = learning_sessions._new_generated_task(db, new_session, course, None,
+        selected = learning_questions.create_learning_task(db, new_session, course, None,
                     [{"knowledge_point":"信号微分", "questions":[{"id":seen.id}, {"id":fresh.id}]}], plan, "diagnostic")
         assert selected == fresh.id

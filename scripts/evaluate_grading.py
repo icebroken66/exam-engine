@@ -57,7 +57,7 @@ def main():
                   provider=gateway.provider.name, model=gateway.provider.model, fixture=fixture,
                   cases_sha256=sha256(args.cases.read_bytes()).hexdigest(),
                   file_hashes={name: sha256((ROOT / name).read_bytes()).hexdigest() for name in
-                               ["scripts/evaluate_grading.py", "backend/app/learning_sessions.py", "backend/app/learning.py", "backend/app/schemas.py"]},
+                               ["scripts/evaluate_grading.py", "backend/app/course_context.py", "backend/app/learning_questions.py", "backend/app/learning_reads.py", "backend/app/learning_grading.py", "backend/app/session_access.py", "backend/app/learning_evidence.py", "backend/app/learning_sessions.py", "backend/app/learning.py", "backend/app/schemas.py"]},
                   limits="Developer-checked task promoted only in isolated fixture; fixed scripted answers, not human mastery or full product ingestion.", cases=[], calls=[])
 
     def save():

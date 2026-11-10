@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .course_context import course_signature
 from .models import Course, EvidenceBlock, LearningAttempt, LearningSession, LearningTask, Source
 
 
@@ -11,11 +12,9 @@ def course_learning_evidence(db: Session, course_id: str, *, page: int = 1, page
                              exclude_session_id: str | None = None, now: datetime | None = None) -> dict | None:
     if db.get(Course, course_id) is None:
         return None
-    # Import here: session planning also consumes this read-only projection.
-    from .learning_sessions import _course_signature
     from .source_lifecycle import task_uses_removed_source
 
-    current_version = _course_signature(db, course_id)
+    current_version = course_signature(db, course_id)
     now = now or datetime.now(timezone.utc)
     rows = db.execute(select(LearningAttempt, LearningTask).join(
         LearningTask, LearningAttempt.task_id == LearningTask.id,

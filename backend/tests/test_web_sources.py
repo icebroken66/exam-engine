@@ -153,7 +153,7 @@ def test_public_source_failure_is_not_silently_replaced(
 def test_related_supplement_enters_existing_topic_evidence(
     client: TestClient, session_factory: sessionmaker, tmp_path,
 ) -> None:
-    from app.learning_sessions import _evidence_rows, _topic_candidates
+    from app.course_context import _evidence_rows, _topic_candidates
 
     course_id = prepare_anchor(client, session_factory, tmp_path)
     supplement = upload(

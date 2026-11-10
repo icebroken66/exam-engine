@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.learning_sessions import (
-    _diagnosed_topics, _diagnostic_target, _planner_payload, _safe_plan, _semantic_topic,
+    _planner_payload, _safe_plan,
     create_or_resume_session,
 )
+from app.course_context import diagnostic_target as _diagnostic_target, _semantic_topic
+from app.learning_reads import diagnosed_topics as _diagnosed_topics
 from app.main import get_model_gateway
 from app.model_gateway import ModelError, ModelGateway, ModelProvider, MockProvider, ProviderReply, TokenUsage
 from app.models import LearningAttempt, LearningPointState, LearningSession, LearningTask, Source, UsageRecord

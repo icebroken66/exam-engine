@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.learning_sessions import _course_candidates
+from app.course_context import course_candidates as _course_candidates
 from app.models import EvidenceBlock, LearningAttempt, LearningSession, LearningTask, ParseTask, Question, Source
 from app.worker import run_next_task
 from test_agent import use_mock
