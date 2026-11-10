@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LearningSession, TutoringHistory } from '../lib/api'
-import { acknowledgeTutoring, getTutoring, sendTutoring } from '../lib/api'
+import type { LearningSession } from '../lib/clients/learning'
+import type { TutoringHistory } from '../lib/clients/tutoring'
+import { acknowledgeTutoring, getTutoring, sendTutoring } from '../lib/clients/tutoring'
 import { StudyContent } from './StudyContent'
 import { LearningOperationStatus } from './LearningOperationStatus'
 

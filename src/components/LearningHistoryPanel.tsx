@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getLearningHistory, listLearningSessions } from '../lib/api'
-import type { LearningSessionHistory, LearningSessionSummary } from '../lib/api'
+import { getLearningHistory, listLearningSessions } from '../lib/clients/learning'
+import type { LearningSessionHistory, LearningSessionSummary } from '../lib/clients/learning'
 import { GradeReviewControls } from './GradeReviewControls'
 import { StudyContent } from './StudyContent'
 import { LearningEvidencePanel } from './LearningEvidencePanel'

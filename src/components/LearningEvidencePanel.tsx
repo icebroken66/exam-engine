@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getCourseLearningEvidence } from '../lib/api'
-import type { CourseLearningEvidence } from '../lib/api'
+import { getCourseLearningEvidence } from '../lib/clients/evidence'
+import type { CourseLearningEvidence } from '../lib/clients/evidence'
 
 const labels = { correct: '答对', incorrect: '未通过', ungraded: '尚未判分' }
 const date = (value: string) => new Date(value).toLocaleString('zh-CN')

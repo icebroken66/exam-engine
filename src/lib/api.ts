@@ -1,3 +1,8 @@
+import { request } from './clients/transport'
+export * from './clients/learning'
+export * from './clients/tutoring'
+export * from './clients/evidence'
+
 export interface Course {
   id: string
   school: string
@@ -15,58 +20,6 @@ export interface CourseInput {
   exam_date: string | null
 }
 
-export interface PriorLearningEvidence {
-  session_id: string
-  task_id: string
-  attempt_id: string
-  knowledge_point: string
-  sub_skill: string
-  kind: string
-  verdict: 'correct' | 'incorrect' | 'ungraded'
-  hints_used: number
-  taken_at: string
-  grading_layer: string
-  evidence_version: string
-  usable: boolean
-  exclusion_reason: string
-  recommendation: 'needs_review' | 'repair' | 'without_help' | 'due' | 'later'
-  explanation: string
-  due_at: string | null
-}
-
-export interface CourseLearningEvidence {
-  course_id: string
-  current_version: string
-  total: number
-  usable_count: number
-  excluded_count: number
-  due_count: number
-  page: number
-  page_size: number
-  items: PriorLearningEvidence[]
-  limitation: string
-}
-
-export function getCourseLearningEvidence(courseId: string, page = 1): Promise<CourseLearningEvidence> {
-  return request<CourseLearningEvidence>(`/api/courses/${courseId}/learning-evidence?page=${page}&page_size=6`)
-}
-
-export interface CourseContext {
-  course_id: string
-  preparation_status: 'awaiting_anchor' | 'assessing_materials' | 'ready_to_confirm' | 'needs_more_evidence'
-  can_start: boolean
-  knowledge_mode: 'course_specific' | 'hybrid' | 'general'
-  scope_text: string
-  scope_source: 'user' | 'course_evidence' | 'general_inference' | 'awaiting_anchor'
-  topics: string[]
-  visible_limitation: string
-  total_sources: number
-  usable_sources: number
-  parsing_sources: number
-  failed_sources: number
-  missing_materials: string[]
-}
-
 export interface Health {
   status: string
   service: string
@@ -75,6 +28,7 @@ export interface Health {
 }
 
 export type SourceStatus = 'uploaded' | 'queued' | 'running' | 'needs_review' | 'needs_transcription_review' | 'ready' | 'failed'
+
 export type MaterialType = 'courseware' | 'past_exam' | 'assignment' | 'teacher_guidance' | 'notes' | 'other'
 
 export interface SourceOrigin {
@@ -231,7 +185,9 @@ export interface AgentSolution {
 }
 
 export type QuestionType = 'single_choice' | 'multiple_choice' | 'true_false' | 'short_answer' | 'calculation' | 'other'
+
 export type QuestionProvenance = 'original' | 'adapted'
+
 export type QuestionCitation = Omit<AgentCitation, 'relevance'>
 
 export interface CourseQuestion {
@@ -372,117 +328,6 @@ export interface GitHubImportResult {
   imported_count: number
   deduplicated_count: number
   failures: { path: string; message: string }[]
-}
-
-export type LearningStage = 'preparing' | 'diagnosing' | 'reviewing' | 'remediating' | 'practicing' | 'retesting' | 'planning' | 'simulating' | 'blocked' | 'completed'
-
-export interface LearningAttempt {
-  id: string
-  task_id: string
-  attempt_number: number
-  answer: string
-  verdict: 'correct' | 'incorrect' | 'ungraded'
-  grading_layer: string
-  confidence: number | null
-  feedback: string
-  missing_points: string[]
-  hints_used: number
-  duration_seconds: number
-  provider: string
-  model: string
-  mocked: boolean
-  usage_id: string | null
-  created_at: string
-  review_history: {
-    id: string
-    created_at: string
-    reason: string
-    method?: 'ai' | 'human'
-    previous: { verdict: string; feedback: string }
-    revised: { verdict: string; feedback: string }
-  }[]
-}
-
-export interface LearningTask {
-  source_removed: boolean
-  help_exposures: number
-  id: string
-  kind: 'diagnostic' | 'practice' | 'retest'
-  ordinal: number
-  knowledge_point: string
-  sub_skill: string
-  cognitive_level: 'remember' | 'understand' | 'apply' | 'analyze'
-  difficulty_prior: 'basic' | 'medium' | 'advanced'
-  question_type: QuestionType
-  stem: string
-  options: string[]
-  provenance: string
-  origin_question_id: string | null
-  answer_provenance: 'source' | 'ai' | 'human' | 'missing'
-  source_track: 'course' | 'general'
-  visible_limitation: string
-  rubric: string[]
-  prerequisites: string[]
-  validation_status: string
-  validation_confidence: number | null
-  decision_reason: string
-  reference_answer: string | null
-  study_answer: string | null
-  analysis: string | null
-  citations: QuestionCitation[]
-  latest_attempt: LearningAttempt | null
-}
-
-export interface LearningPointState {
-  knowledge_point: string
-  status: string
-  evidence_confidence: 'low' | 'medium' | 'high'
-  hint_dependent: boolean
-  no_progress_rounds: number
-  score: number
-  evidence_count: number
-  last_attempt_id: string | null
-  updated_at: string
-}
-
-export interface LearningEvent {
-  id: string
-  task_id: string | null
-  kind: string
-  payload: Record<string, unknown>
-  created_at: string
-}
-
-export interface LearningSession {
-  progress_version: string
-  id: string
-  course_id: string
-  stage: LearningStage
-  knowledge_mode: 'course_specific' | 'hybrid' | 'general'
-  scope_text: string
-  visible_limitation: string
-  current_task: LearningTask | null
-  diagnostic_total: number
-  diagnostic_completed: number
-  diagnostic_target: number
-  practice_completed: number
-  retest_passed: number
-  points: LearningPointState[]
-  recent_events: LearningEvent[]
-  agent_message: string
-  next_action: string
-  created_at: string
-  updated_at: string
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    throw new Error(body?.detail ?? `请求失败（${response.status}）`)
-  }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
 }
 
 export function getHealth(): Promise<Health> {
@@ -663,82 +508,6 @@ export function importGithub(courseId: string, input: GitHubImportInput): Promis
   })
 }
 
-export function getLearningContext(courseId: string): Promise<CourseContext> {
-  return request<CourseContext>(`/api/courses/${courseId}/learning-context`)
-}
-
-export function getCurrentLearningSession(courseId: string): Promise<LearningSession | null> {
-  return request<LearningSession | null>(`/api/courses/${courseId}/learning-sessions/current`, { signal: AbortSignal.timeout(15000) })
-}
-
-export function startLearningSession(courseId: string, restart = false): Promise<LearningSession> {
-  const query = restart ? '?restart=true' : ''
-  return request<LearningSession>(`/api/courses/${courseId}/learning-sessions${query}`, { method: 'POST' })
-}
-
-export function getLearningSession(sessionId: string): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${sessionId}`, { signal: AbortSignal.timeout(15000) })
-}
-
-export function submitLearningAttempt(session: LearningSession, answer: string, durationSeconds: number): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${session.id}/attempts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer, duration_seconds: durationSeconds, ...learningProgressInput(session) }),
-  })
-}
-
-export interface LearningSessionSummary {
-  id: string
-  course_id: string
-  stage: string
-  created_at: string
-  updated_at: string
-}
-
-export interface LearningSessionHistory {
-  session: LearningSession
-  tasks: { task: LearningTask; attempts: LearningAttempt[] }[]
-}
-
-export function listLearningSessions(courseId: string): Promise<LearningSessionSummary[]> {
-  return request(`/api/courses/${courseId}/learning-sessions`)
-}
-
-export function getLearningHistory(sessionId: string): Promise<LearningSessionHistory> {
-  return request(`/api/learning-sessions/${sessionId}/history`)
-}
-
-export function correctLearningAttempt(sessionId: string, attempt: LearningAttempt, verdict: LearningAttempt['verdict'], reason: string): Promise<LearningSession> {
-  return request(`/api/learning-sessions/${sessionId}/attempts/${attempt.id}/correction`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verdict, reason, expected_review_count: attempt.review_history.length }),
-  })
-}
-
-export function reviewLearningAttempt(sessionId: string, attemptId: string, reason: string, expectedReviewCount = 0): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${sessionId}/attempts/${attemptId}/review`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason, expected_review_count: expectedReviewCount }),
-  })
-}
-
-function learningProgressInput(session: LearningSession) {
-  return { expected_task_id: session.current_task?.id, expected_progress_version: session.progress_version }
-}
-
-export function advanceLearningSession(session: LearningSession): Promise<LearningSession> {
-  return request<LearningSession>(`/api/learning-sessions/${session.id}/next`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learningProgressInput(session)),
-  })
-}
-
-export function requestLearningHint(session: LearningSession): Promise<{ hint: string; session: LearningSession }> {
-  return request<{ hint: string; session: LearningSession }>(`/api/learning-sessions/${session.id}/hints`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learningProgressInput(session)) })
-}
-
-
 export interface SourceRemovalImpact {
   source_id: string
   source_name: string
@@ -762,7 +531,6 @@ export function removeSource(sourceId: string, signature: string): Promise<Sourc
   })
 }
 
-
 export interface CoverageTask {
   id: string
   session_id: string
@@ -770,6 +538,7 @@ export interface CoverageTask {
   sub_skill: string
   verdict: string
 }
+
 export interface CoverageUnit {
   source_id: string
   source_name: string
@@ -786,6 +555,7 @@ export interface CoverageUnit {
   diagnostic_tasks: CoverageTask[]
   retest_tasks: CoverageTask[]
 }
+
 export interface CourseCoverage {
   course_id: string
   source_count: number
@@ -796,38 +566,7 @@ export interface CourseCoverage {
   limitation: string
   units: CoverageUnit[]
 }
+
 export function getCourseCoverage(courseId: string): Promise<CourseCoverage> {
   return request<CourseCoverage>(`/api/courses/${courseId}/coverage`, { signal: AbortSignal.timeout(15000) })
-}
-
-
-export interface TutoringTurn {
-  id: string
-  task_id: string
-  request_id: string
-  sequence: number
-  student_message: string
-  status: 'running' | 'saved' | 'failed' | 'stale'
-  reply: { message: string; action: string; reason: string; evidence_ids: string[]; help_level: string; observation: string; uncertainty: string } | null
-  citations: QuestionCitation[]
-  error: string
-  mocked: boolean
-  delivered_at: string | null
-  created_at: string
-}
-export interface TutoringHistory {
-  task_id: string
-  sequence: number
-  turns: TutoringTurn[]
-  retest_help_enabled: boolean
-  session: LearningSession
-}
-export function getTutoring(sessionId: string, taskId: string): Promise<TutoringHistory> {
-  return request<TutoringHistory>(`/api/learning-sessions/${sessionId}/tasks/${taskId}/tutoring`, { signal: AbortSignal.timeout(15000) })
-}
-export function sendTutoring(session: LearningSession, requestId: string, sequence: number, message: string, allowRetestHelp: boolean): Promise<TutoringHistory> {
-  return request<TutoringHistory>(`/api/learning-sessions/${session.id}/tutoring`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_task_id: session.current_task?.id, expected_progress_version: session.progress_version, request_id: requestId, expected_sequence: sequence, message, allow_retest_help: allowRetestHelp }) })
-}
-export function acknowledgeTutoring(sessionId: string, turnId: string): Promise<TutoringHistory> {
-  return request<TutoringHistory>(`/api/learning-sessions/${sessionId}/tutoring/${turnId}/received`, { method: 'POST' })
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { correctLearningAttempt, reviewLearningAttempt } from '../lib/api'
-import type { LearningAttempt, LearningSession } from '../lib/api'
+import { correctLearningAttempt, reviewLearningAttempt } from '../lib/clients/learning'
+import type { LearningAttempt, LearningSession } from '../lib/clients/learning'
 import { StudyContent } from './StudyContent'
 
 const verdictLabel = (verdict: string) => verdict === 'correct' ? '正确' : verdict === 'incorrect' ? '未通过' : '待确认'

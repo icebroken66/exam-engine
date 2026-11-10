@@ -6,13 +6,10 @@ import {
   Check,
   CheckCircle2,
   Circle,
-  FileText,
-  Lightbulb,
   LoaderCircle,
   RotateCcw,
   ShieldCheck,
   Target,
-  XCircle,
 } from 'lucide-react'
 import {
   advanceLearningSession,
@@ -21,12 +18,13 @@ import {
   getLearningSession,
   startLearningSession,
   submitLearningAttempt,
-} from '../lib/api'
-import type { CourseContext, LearningSession, LearningTask } from '../lib/api'
+} from '../lib/clients/learning'
+import type { CourseContext, LearningSession } from '../lib/clients/learning'
 import { TutoringPanel } from './TutoringPanel'
-import { StudyContent } from './StudyContent'
 import { LearningOperationStatus } from './LearningOperationStatus'
-import { GradeReviewControls } from './GradeReviewControls'
+import { EvidenceAndAnswer } from './LearningAnswerFeedback'
+import { LearningAnswerForm } from './LearningAnswerForm'
+import { CurrentLearningQuestion } from './CurrentLearningQuestion'
 
 const stageLabels = {
   diagnosing: '主动诊断',
@@ -95,51 +93,11 @@ function stageIndex(session: LearningSession) {
   return Math.max(0, stages.indexOf(session.stage))
 }
 
-function taskLabel(task: LearningTask) {
-  if (task.kind === 'diagnostic') return '诊断题'
-  return task.kind === 'practice' ? '同类练习' : '独立重测'
-}
-
 function researchRejectedQuestion(courseId: string, reason: unknown) {
   const message = reason instanceof Error ? reason.message : ''
   if (/证据|资料|验收|停止发布/.test(message)) {
     window.dispatchEvent(new CustomEvent('exam-engine:research-gap', { detail: { courseId, focus: message } }))
   }
-}
-
-function GradingBadge({ task }: { task: LearningTask }) {
-  const attempt = task.latest_attempt
-  if (!attempt) return null
-  const label = attempt.grading_layer === 'human_correction' ? '人工纠正' : attempt.grading_layer === 'deterministic'
-    ? '确定性判分'
-    : attempt.mocked
-      ? 'MOCK 流程判分'
-      : '真实模型判分'
-  return <span className={`grading-badge ${attempt.mocked ? 'mock' : ''}`}>{label}</span>
-}
-
-function EvidenceAndAnswer({ task }: { task: LearningTask }) {
-  if (!task.study_answer) return null
-  return (
-    <div className="learning-explanation">
-      <div>
-        <span className="mini-label">{task.source_track === 'course' ? '课程依据下的参考答案' : '通用知识参考答案 · 非校本原题'}</span>
-        <StudyContent>{task.study_answer}</StudyContent>
-      </div>
-      {task.analysis && <div><span className="mini-label">针对性讲解</span><StudyContent>{task.analysis}</StudyContent></div>}
-      {task.citations.length > 0 && (
-        <div className="learning-citations">
-          <span className="mini-label"><FileText size={13} /> 回到课程原文</span>
-          {task.citations.map((citation) => (
-            <blockquote key={citation.evidence_id}>
-              <p>{citation.excerpt}</p>
-              <cite>{citation.source_name} · {citation.node_title}{citation.page_number ? ` · 第 ${citation.page_number} 页` : ''}</cite>
-            </blockquote>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, sessionId, onOpenLatest }: { courseId: string; refreshVersion?: number; onOpenSources: () => void; sessionId?: string | null; onOpenLatest: () => void }) {
@@ -472,106 +430,8 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
         </div>
       ) : task ? (
         <div className="learning-task-card">
-          <div className="task-heading" id="current-question" tabIndex={-1}>
-            <div>
-              <span className="task-kicker">{taskLabel(task)} · {task.knowledge_point}</span>
-              <StudyContent>{task.stem}</StudyContent>
-            </div>
-            <span className="provenance-badge">
-              {task.provenance === 'original'
-                ? task.answer_provenance === 'ai'
-                  ? '真实原题 · AI 参考答案'
-                  : task.answer_provenance === 'human' ? '真实原题 · 人工校订答案' : '真实原题 · 原卷答案'
-                : task.provenance === 'adapted'
-                  ? '真实原题改编'
-                  : task.source_track === 'general' ? '通用生成题' : '无合适原题 · 循证原创'}
-            </span>
-          </div>
-          <details className="task-quality"><summary>题目质量与适用范围</summary><div className="task-blueprint">
-            <span>{task.sub_skill}</span>
-            <span>{task.cognitive_level} · {task.difficulty_prior}</span>
-          </div>
-          <p className="task-limitation">{task.visible_limitation}</p>
-          <p className="task-validation"><ShieldCheck size={13} /> 独立质量验证：{task.validation_status === 'validated' ? '通过' : task.validation_status}{task.validation_confidence !== null ? ` · ${Math.round(task.validation_confidence * 100)}%` : ''}</p></details>
-          {task.source_removed && <p className="notice" role="status">这道题引用的资料已移除，已有记录保留。请依据剩余资料重新安排；没有有效资料时需先补传。</p>}
-          {graded && task.rubric.length > 0 && (
-            <div className="task-rubric"><span className="mini-label">评分要点</span><ul>{task.rubric.map((point) => <li key={point}>{point}</li>)}</ul></div>
-          )}
-
-          <form onSubmit={submit} id="formal-answer" tabIndex={-1}>
-            {graded && attempt && <div className="saved-answer" role="region" aria-label="已保存的作答"><span className="mini-label">已保存的作答</span><StudyContent>{attempt.answer}</StudyContent><small>以下判分对应这份服务器记录。</small></div>}
-            {task.options.length > 0 ? (
-              <div className="learning-options" role="group" aria-label={task.question_type === 'multiple_choice' ? '请选择全部正确答案' : '请选择答案'}>
-                {task.options.map((option) => {
-                  const selected = task.question_type === 'multiple_choice' ? displayedAnswer.split('；').includes(option) : displayedAnswer === option
-                  return (
-                    <label className={selected ? 'selected' : ''} key={option}>
-                      <input
-                        type={task.question_type === 'multiple_choice' ? 'checkbox' : 'radio'}
-                        name="answer"
-                        value={option}
-                        checked={selected}
-                        onChange={(event) => {
-                          if (task.question_type !== 'multiple_choice') return setAnswer(event.target.value)
-                          const current = answer.split('；').filter(Boolean)
-                          setAnswer(event.target.checked ? [...current, option].join('；') : current.filter((item) => item !== option).join('；'))
-                        }}
-                        disabled={!canAnswer || busy === 'answer'}
-                      />
-                      <StudyContent>{option}</StudyContent>
-                    </label>
-                  )
-                })}
-              </div>
-            ) : !graded ? (
-              <label className="answer-field">
-                <span>{task.help_exposures > 0 ? '你的正式作答（已接受帮助）' : '你的独立作答'}</span>
-                <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} placeholder="写出关键条件与结论，不要只写“懂了”。" rows={5} disabled={!canAnswer || busy === 'answer'} required />
-              </label>
-            ) : null}
-
-            {attempt && (
-              <div className={`attempt-feedback ${attempt.verdict}`} aria-live="polite">
-                <div className="feedback-heading">
-                  {attempt.verdict === 'correct' ? <CheckCircle2 size={19} /> : attempt.verdict === 'incorrect' ? <XCircle size={19} /> : <RotateCcw size={19} />}
-                  <strong>{attempt.verdict === 'correct' ? '回答正确' : attempt.verdict === 'incorrect' ? '这次回答未通过' : '需要补充作答依据'}</strong>
-                  <GradingBadge task={task} />
-                </div>
-                <StudyContent>{attempt.feedback}</StudyContent>
-                <small>第 {attempt.attempt_number} 次作答 · 使用提示 {attempt.hints_used} 次{attempt.confidence !== null ? ` · 判分置信度 ${Math.round(attempt.confidence * 100)}%` : ''}</small>
-                {attempt.missing_points.length > 0 && <ul>{attempt.missing_points.map((point) => <li key={point}>{point}</li>)}</ul>}
-              </div>
-            )}
-
-            {attempt && <GradeReviewControls key={attempt.id} sessionId={session.id} attempt={attempt} onChanged={setSession} disabled={Boolean(busy) || tutoringBusy || recoveryRequired} />}
-
-            {(graded || session.stage === 'remediating') && <EvidenceAndAnswer task={task} />}
-
-            <div className="learning-actions">
-              {canAnswer && (
-                <>
-                  <button className="primary-action" type="submit" disabled={!answer.trim() || Boolean(busy) || tutoringBusy || recoveryRequired}>
-                    {busy === 'answer' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
-                    {busy === 'answer' ? '正在保存并判分…' : attempt?.verdict === 'ungraded' ? '补充后重新提交' : task.help_exposures > 0 ? '提交正式作答（已接受帮助）' : '提交独立作答'}
-                  </button>
-                  {task.kind !== 'retest' && (
-                    <button className="text-action" type="button" onClick={() => { const input = document.querySelector<HTMLTextAreaElement>('.tutoring-panel textarea'); input?.scrollIntoView({ behavior: 'smooth', block: 'center' }); input?.focus({ preventScroll: true }) }} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
-                      <Lightbulb size={16} /> 围绕当前题求助
-                    </button>
-                  )}
-                </>
-              )}
-              {canNext && session.stage !== 'blocked' && (
-                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
-                  {busy === 'next' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
-                  {busy === 'next' ? 'Agent 正在决策…' : session.next_action}
-                </button>
-              )}
-              {session.stage === 'blocked' && (
-                <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}><RotateCcw size={17} /> {task.source_removed ? '依据剩余资料重新安排' : '恢复当前学习任务'}</button>
-              )}
-            </div>
-          </form>
+          <CurrentLearningQuestion task={task} graded={graded} />
+          <LearningAnswerForm session={session} task={task} answer={answer} setAnswer={setAnswer} submit={submit} next={next} setSession={setSession} busy={busy} tutoringBusy={tutoringBusy} recoveryRequired={recoveryRequired} graded={graded} displayedAnswer={displayedAnswer} canAnswer={canAnswer} canNext={canNext} />
         </div>
       ) : null}
 
