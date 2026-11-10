@@ -11,7 +11,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'npm run dev:web -- --host 127.0.0.1 --port 7171 --strictPort',
+    command: process.env.EXAM_ENGINE_UI_PREVIEW === '1'
+      ? 'npm run preview -- --host 127.0.0.1 --port 7171 --strictPort'
+      : 'npm run dev:web -- --host 127.0.0.1 --port 7171 --strictPort',
     url: 'http://127.0.0.1:7171',
     reuseExistingServer: false,
   },

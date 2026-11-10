@@ -169,23 +169,13 @@ npm run dev
 
 ## 8. 开发验证与其他系统
 
-Windows PowerShell：
+维护默认入口（先按第 2 节安装依赖）：
 
-```powershell
-npm test
-.\.venv\Scripts\python.exe -m pytest backend
-npm run build
-```
+    npm run test:maintenance
 
-浏览器回归默认使用 Windows 的 Microsoft Edge；如需 Chromium：
+强制 Mock 与临时数据库，依次运行入口守卫、后端、单元、构建、模拟 API 浏览器及离线夹具，保存带提交和源码指纹的日志 / report.json。不需要私有 data、密钥或 .env，不修改正式学习库。Windows 默认 Edge；其他系统先安装 Chromium 并设置 PLAYWRIGHT_CHANNEL，详见 [维护与离线回归](docs/maintenance/README.md)。首次安装需网络。
 
-```powershell
-npx playwright install chromium
-$env:PLAYWRIGHT_CHANNEL = 'chromium'
-npm run test:ui
-```
-
-浏览器测试使用明确的网络样例；自动化通过不等于任意学科的模型质量均已验证。真实资料闭环曾完成验收，仍需同伴反馈与更多课程测试。
+职责与局部检查见 [模块说明](docs/maintenance/模块职责.md)，历史工程 / 模型 / 真人边界见 [证据索引](docs/maintenance/证据索引.md)。直接 pytest 前自行隔离数据库配置；默认入口已处理。工程通过不代表模型质量或真人收益。
 
 macOS / Linux 可使用以下安装命令；一键启动脚本会选择对应系统的 Python 路径。完整操作主要在 Windows 验证，其他系统尚待实测：
 

@@ -12,7 +12,8 @@
     "test:api": ".venv\\Scripts\\python.exe -m pytest backend",
     "demo:prepare": ".venv\\Scripts\\python.exe scripts/prepare_demo.py",
     "preview": "vite preview",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "test:maintenance": "node scripts/verify-maintenance.mjs"
   },
   "dependencies": {
     "katex": "^0.19.1",
