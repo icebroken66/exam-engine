@@ -147,7 +147,7 @@ def add_notice(r,text):
 def transcript(db,r,upload_dir=None):
     active={('retrieval',e['retrieval_id']) if e.get('retrieved') else ('binding',e['binding_id']):e['fingerprint'] for e in r.evidence}
     old=list(db.scalars(select(RequestRow).join(Message,Message.request_id==RequestRow.id).where(RequestRow.topic_id==r.topic_id,RequestRow.course_id==r.course_id,RequestRow.state=='published',RequestRow.id!=r.id,Message.role=='assistant').order_by(Message.id.desc())))
-    history=[];trace=[];corrections=[];history_evidence={}
+    history=[];trace=[];corrections=[];history_evidence={};dependency_trace=[]
     for previous in old:
         reason='target_scope' if not set(previous.frozen['item_ids'])<=set(r.frozen['item_ids']) else ''
         retained=[]
@@ -172,9 +172,10 @@ def transcript(db,r,upload_dir=None):
         if not reason:history.append({'user':pair[0].text,'assistant':pair[1].text})
         if not reason or correction:
             for item in retained:history_evidence[item['fingerprint']]=item
+            dependency_trace.append({'request_id':previous.id,'fingerprints':[item['fingerprint'] for item in retained]})
     if any(t['reason']=='recent_pair_limit' for t in trace):add_notice(r,'本次仅纳入最近6组有效问答，较早讨论未完整带入；可直接补充需要沿用的前提')
     if any(t['reason'] in {'target_scope','attachment_removed_or_version_changed'} for t in trace):add_notice(r,'部分历史依赖已移除、变更附件或当前范围外对象，本次未纳入')
-    r.frozen={**r.frozen,'context_trace':trace,'corrections':list(reversed(corrections)),'history_evidence':list(history_evidence.values())}
+    r.frozen={**r.frozen,'context_trace':trace,'corrections':list(reversed(corrections)),'history_evidence':list(history_evidence.values()),'history_dependency_trace':dependency_trace}
     return list(reversed(history))
 
 def prompt(db,r,upload_dir=None):
@@ -190,6 +191,10 @@ def prompt(db,r,upload_dir=None):
         if included:included[-1].update(included=False,reason='input_budget')
         r.frozen={**r.frozen,'context_trace':trace}
         add_notice(r,'较早完整问答因输入预算未纳入；如缺少前提，请直接补充')
+    retained_requests={t['request_id'] for t in r.frozen['context_trace'] if t['included']}|{c['request_id'] for c in r.frozen.get('corrections',[])}
+    dependencies=[t for t in r.frozen.get('history_dependency_trace',[]) if t['request_id'] in retained_requests]
+    fingerprints={fingerprint for entry in dependencies for fingerprint in entry['fingerprints']}
+    r.frozen={**r.frozen,'history_dependency_trace':dependencies,'history_evidence':[e for e in r.frozen.get('history_evidence',[]) if e['fingerprint'] in fingerprints]}
     # Never silently forget an explicit user correction to fit stale assumptions.
     if cost(value)>INPUT_LIMIT and r.frozen.get('corrections'):
         add_notice(r,'需要沿用的用户纠正记录超出本次范围，请明确补充当前有效前提；本次未派发')

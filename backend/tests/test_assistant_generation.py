@@ -491,6 +491,53 @@ def test_budget_exclusions_have_request_trace(gen,monkeypatch):
     assert read(g,b)['state']=='published',read(g,b)
     with g['factory']() as db:assert any(x['reason']=='input_budget' for x in db.get(AssistantRequest,b['request_id']).frozen['context_trace'])
 
+@pytest.mark.parametrize('correction',[False,True])
+def test_budget_trimmed_history_only_keeps_dependencies_for_retained_corrections(gen,monkeypatch,correction):
+    from app import assistant_generation as generation
+    g=gen;t=topic(g);searchable_pdf_block(g)
+    text=('Correction: ' if correction else '')+'Explain Public fixture 0 page 1'
+    _,first=request(g,t,text=text);g['runtime'].run();assert read(g,first)['state']=='published'
+    # Simulate a long previously published explanation to force whole-pair trimming.
+    with g['factory']() as db:
+        message=db.scalar(select(AssistantMessage).where(AssistantMessage.request_id==first['request_id'],AssistantMessage.role=='assistant'))
+        message.text='historical explanation '*2000;db.commit()
+    monkeypatch.setattr(generation,'INPUT_LIMIT',8000)
+    def remove():
+        with g['factory']() as db:
+            db.get(Source,g['sources'][0]['id']).removed_at=__import__('datetime').datetime.now();db.commit()
+    g['provider'].effect=remove
+    _,follow=request(g,t,text='请解释一个新的比喻');g['runtime'].run()
+    payload=g['provider'].calls[-1]
+    assert payload['history']==[] and bool(payload['corrections'])==correction
+    assert read(g,follow)['state']==('stale' if correction else 'published')
+    with g['factory']() as db:
+        frozen=db.get(AssistantRequest,follow['request_id']).frozen
+        assert frozen['context_trace'][0]['reason']=='input_budget'
+        assert bool(frozen['history_evidence'])==correction
+        assert bool(frozen['history_dependency_trace'])==correction
+    if not correction:
+        state=read(g,follow)
+        body={'schema_version':2,'command_id':str(uuid4()),'expected_revision':state['revision'],'evidence_ids':[]}
+        saved=g['client'].post(g['url']+'/requests/'+follow['request_id']+'/saved-explanations',json=body)
+        assert saved.status_code==200 and saved.json()['valid'] and saved.json()['anchors']==[]
+        reread=g['client'].get(g['url']+'/saved-explanations/'+saved.json()['id']).json()
+        assert reread['valid'] and reread['content']==saved.json()['content']
+
+def test_budget_trim_preserves_shared_dependencies_of_remaining_history(monkeypatch):
+    from types import SimpleNamespace
+    from app import assistant_generation as generation
+    request=SimpleNamespace(intent={'text':'解释当前概念'},evidence=[],notices=[],frozen={'groups':[]})
+    def prepared(db,row,upload_dir):
+        row.frozen={**row.frozen,'context_trace':[{'request_id':'new','included':True},{'request_id':'old','included':True}],
+                    'corrections':[],'history_evidence':[{'fingerprint':'shared'},{'fingerprint':'old-only'}],
+                    'history_dependency_trace':[{'request_id':'new','fingerprints':['shared']},{'request_id':'old','fingerprints':['shared','old-only']}]}
+        return [{'user':'old','assistant':'long explanation '*2000},{'user':'new','assistant':'short explanation'}]
+    monkeypatch.setattr(generation,'transcript',prepared);monkeypatch.setattr(generation,'INPUT_LIMIT',8000)
+    payload=json.loads(generation.prompt(None,request))
+    assert payload['history']==[{'user':'new','assistant':'short explanation'}]
+    assert request.frozen['history_evidence']==[{'fingerprint':'shared'}]
+    assert request.frozen['history_dependency_trace']==[{'request_id':'new','fingerprints':['shared']}]
+
 def test_budget_and_oversized_current_input_never_dispatch(gen):
     g=gen;t=topic(g);g['gateway'].course_token_budget=1;r,b=request(g,t);g['runtime'].run();assert read(g,b)['state']=='failed';assert not g['provider'].calls
     g['gateway'].course_token_budget=None;r,b=request(g,t,text='汉'*5000);g['runtime'].run();assert read(g,b)['state']=='failed';assert not g['provider'].calls
