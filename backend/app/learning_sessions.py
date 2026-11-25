@@ -234,16 +234,24 @@ def _safe_plan(db: Session, session: LearningSession, task: LearningTask, latest
     return plan
 
 
-def advance_session(db: Session, session_id: str, gateway: ModelGateway, expected_task_id: str | None = None, expected_progress_version: str | None = None) -> dict:
+def advance_session(db: Session, session_id: str, gateway: ModelGateway, expected_task_id: str | None = None, expected_progress_version: str | None = None, independent_check: bool = False) -> dict:
     session = get_learning_session(db, session_id)
     assert_session_progress(db, session, expected_task_id, expected_progress_version)
     assert_no_running_tutoring(db, session)
     progress = get_progress_version(db, session)
+    if independent_check and (not expected_task_id or not expected_progress_version):
+        raise LearningSessionError(422, '独立检查需要明确当前题目与进度版本')
+    if independent_check:
+        course = db.get(Course,session.course_id)
+        if not course or course.archived_at or session.stage not in ACTIVE_STAGES | {'remediating'}:
+            raise LearningSessionError(409,'此轮次当前不能生成独立检查题')
     if session.stage == "completed":
         return read_learning_session(db, session.id)
     task = get_current_task(db, session)
     latest = get_latest_attempt(db, task.id)
     if task_uses_removed_source(db, task):
+        if independent_check:
+            raise LearningSessionError(409,'当前题资料已失效，不能据此生成独立检查题，请先恢复或重新安排学习')
         course = db.get(Course, session.course_id)
         context = prepare_course_context(db, session.course_id, gateway)
         candidates = course_candidates(db, session.course_id)
@@ -277,7 +285,9 @@ def advance_session(db: Session, session_id: str, gateway: ModelGateway, expecte
     session.scope_text = context["scope_text"]
     session.diagnostic_signature = course_signature(db, course.id)
 
-    if session.stage == "remediating":
+    if independent_check:
+        plan = LearningPlanContent(action='retest',knowledge_point=task.knowledge_point,sub_skill=task.sub_skill,cognitive_level=task.cognitive_level,difficulty_prior=task.difficulty_prior,reason='学生明确选择以未见题或实质变式独立检查；此前帮助不作为掌握证据')
+    elif session.stage == "remediating":
         plan = LearningPlanContent(
             action="practice",
             knowledge_point=task.knowledge_point,

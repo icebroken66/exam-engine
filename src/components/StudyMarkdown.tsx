@@ -5,9 +5,9 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { normalizeMathMarkdown } from '../lib/mathMarkdown'
 
-export default function StudyMarkdown({ children }: { children: string }) {
+export default function StudyMarkdown({ children,allowLinks=true }: { children: string;allowLinks?:boolean }) {
   return <div className="study-content"><ReactMarkdown
     remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
-    components={{ a: ({ children: label, ...props }) => <a {...props} target="_blank" rel="noreferrer">{label}</a> }}
+    components={{ img:({alt,...props})=>allowLinks?<img alt={alt} {...props}/>:<span>{alt||'图片内容未加载'}</span>, a: ({ children: label, ...props }) => allowLinks?<a {...props} target="_blank" rel="noreferrer">{label}</a>:<span>{label}</span> }}
   >{normalizeMathMarkdown(children)}</ReactMarkdown></div>
 }

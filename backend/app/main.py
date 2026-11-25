@@ -19,6 +19,13 @@ from .config import get_data_dir
 from .database import Base, SessionLocal, engine, migrate_schema
 from .dependencies import get_db, get_model_gateway
 from .learning_routes import router as learning_router
+from .reader_routes import create_reader_router
+from .assistant_routes import router as assistant_router
+from .assistant_workspace_routes import router as assistant_workspace_router
+from .assistant_workspace_models import Topic, WorkItem, WorkspaceCommand
+from .assistant_generation_models import AssistantRequest, AssistantMessage, SavedExplanation
+from .assistant_generation_routes import router as assistant_generation_router
+from .assistant_generation import Runtime as AssistantRuntime, recover as recover_assistant
 from .exam_extraction import extract_exam_questions
 from .github import GitHubError, GitHubPreview, GitHubService
 from .ingestion import ParseStatus, assert_transition
@@ -28,7 +35,7 @@ from .models import (
     Course, DocumentNode, EvidenceBlock, ImportBatch, KnowledgePoint, LearningAttempt,
     LearningEvent, LearningPointState, LearningSession, LearningTask, ParseTask, Question,
     QuestionEvidence, QuestionKnowledgePoint, QuestionRevision, Source, SourceOrigin,
-    TutoringTurn, UsageRecord,
+    TutoringTurn, UsageRecord, ReaderSnapshot, AssistantSnapshot,
 )
 from .retrieval import search_course_evidence
 from .schemas import (
@@ -232,21 +239,30 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine, tables=[t for t in Base.metadata.sorted_tables if t.name not in {'assistant_requests','assistant_messages','assistant_saved_explanations'}])
         migrate_schema()
         with SessionLocal() as startup_db:
+            recover_assistant(startup_db)
             tutoring.recover_interrupted(startup_db)
         upload_dir.mkdir(parents=True, exist_ok=True)
         yield
+        app.state.assistant_runtime.close()
 
     app = FastAPI(title="期末急救引擎 API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:7100"],
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Content-Type"],
     )
+
+    app.include_router(create_reader_router(upload_dir))
+    app.state.reader_upload_dir = upload_dir
+    app.include_router(assistant_router)
+    app.include_router(assistant_workspace_router)
+    app.state.assistant_runtime = AssistantRuntime()
+    app.include_router(assistant_generation_router)
 
     @app.get("/api/health", response_model=HealthRead, tags=["system"])
     def health(db: Session = Depends(get_db)) -> HealthRead:
@@ -312,6 +328,11 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail="资料仍在解析，请等待解析结束后再永久删除课程")
 
         storage_keys = list(db.scalars(select(Source.storage_key).where(Source.course_id == course_id)).all())
+        for model in (SavedExplanation,AssistantMessage, AssistantRequest):
+            if __import__('sqlalchemy').inspect(db.connection()).has_table(model.__tablename__):
+                db.execute(delete(model).where(model.course_id == course_id))
+        for model in (WorkspaceCommand, Topic, WorkItem):
+            db.execute(delete(model).where(model.course_id == course_id))
         session_ids = select(LearningSession.id).where(LearningSession.course_id == course_id)
         question_ids = select(Question.id).where(Question.course_id == course_id)
         source_ids = select(Source.id).where(Source.course_id == course_id)
@@ -322,11 +343,12 @@ def create_app(storage_dir: Path | None = None) -> FastAPI:
             db.execute(delete(model).where(model.question_id.in_(question_ids)))
         db.execute(delete(Question).where(Question.course_id == course_id))
         db.execute(delete(KnowledgePoint).where(KnowledgePoint.course_id == course_id))
-        for model in (EvidenceBlock, DocumentNode, ParseTask, SourceOrigin):
+        for model in (EvidenceBlock, DocumentNode, ParseTask, SourceOrigin, ReaderSnapshot):
             db.execute(delete(model).where(model.source_id.in_(source_ids)))
         db.execute(delete(Source).where(Source.course_id == course_id))
         db.execute(delete(ImportBatch).where(ImportBatch.course_id == course_id))
         db.execute(delete(UsageRecord).where(UsageRecord.course_id == course_id))
+        db.execute(delete(AssistantSnapshot).where(AssistantSnapshot.course_id == course_id))
         db.delete(course)
         db.commit()
         for storage_key in storage_keys:

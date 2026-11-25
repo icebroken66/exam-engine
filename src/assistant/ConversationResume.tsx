@@ -1,0 +1,11 @@
+import {useEffect,useState} from 'react'
+import {Button} from '../reader/boardui/button'
+import type {ConversationStore} from './conversationStore'
+import type {WorkItem} from './workspace'
+export function ConversationResume({store,onClose}:{store:ConversationStore;onClose:()=>void}){
+ const [items,setItems]=useState<WorkItem[]>([]),[next,setNext]=useState<number|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false)
+ async function load(offset=0){try{const p=await store.listItems(offset);setItems(rows=>offset?[...rows,...p.items]:p.items);setNext(p.next_offset)}catch(e){setError(String(e))}}
+ useEffect(()=>{void load()},[store])
+ async function change(item:WorkItem){setBusy(true);try{await store.attention(item,item.attention==='paused'?'ongoing':'paused');await load();setError('')}catch(e){setError(String(e))}finally{setBusy(false)}}
+ return <div className="cp-history"><div className="cp-section-heading"><h2 className="text-headline-medium">继续之前的学习</h2><Button variant="ghost" size="xs" onClick={onClose}>返回</Button></div>{error&&<p role="alert">{error}<Button variant="ghost" size="small" onClick={()=>void load()}>重试读取</Button></p>}{items.length===0&&!error&&<p className="text-body-regular cp-muted">附带题目时会保留学习事项；普通浏览不会创建记录。</p>}{items.map(i=><article className="cp-attachment" key={i.id}><strong className="text-body-medium">{i.title}</strong><p className="text-caption-1-regular cp-muted">{i.attention==='paused'?'已暂停':i.attention==='finished'?'已结束':'可继续'}{i.business&&!i.business.is_current?' · 历史查看':''}</p>{i.business?.reason&&<p className="text-caption-1-regular">{i.business.reason}</p>}<div className="cp-row">{i.session_id&&<a href={'#/courses/'+encodeURIComponent(store.courseId)+(i.business?.is_current?'/learn?session='+encodeURIComponent(i.session_id):'/history')} onClick={onClose}>返回学习</a>}{i.bookmark?.target.source_id&&<a href={'#/courses/'+encodeURIComponent(store.courseId)+'/reader?source='+encodeURIComponent(i.bookmark.target.source_id)} onClick={onClose}>返回资料</a>}<Button size="xs" variant="ghost" disabled={busy||i.read_only} onClick={()=>void change(i)}>{i.attention==='paused'?'恢复':'稍后继续'}</Button></div></article>)}{next!==null&&<Button size="small" variant="ghost" onClick={()=>void load(next)}>显示更多</Button>}</div>
+}

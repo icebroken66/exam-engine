@@ -1,0 +1,580 @@
+{
+  "date": "2026-11-24",
+  "scope": "Historical documentation only; original bytes preserved in zip; archived Markdown banner/links updated",
+  "files": [
+    {
+      "original_path": "exam-engine/docs/development/2026-11-22_资料学习工作区讨论记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/2026-11-22_资料学习工作区讨论记录.md",
+      "original_sha256": "dcc551bf71c96eecf9c6fc8d87ab666af33454641be3291abd2a2012b859962f",
+      "bytes": 57363,
+      "archived_sha256": "129398af990c027efa7f366ffb0c2cd1fc0d53ab3272e6cec35d0e831278d7a1"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M0基线核对与状态索引.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M0基线核对与状态索引.md",
+      "original_sha256": "c2c07cb95c330efec3581318526fc687fbfbab1df94f7b5b3bdc394970ef6ee6",
+      "bytes": 3772,
+      "archived_sha256": "b43e0d6169018b5f1cbb307ce092ee15af287febe743a8b76471a24f2f9a2458"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M1交互与上下文纠偏实施报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M1交互与上下文纠偏实施报告.md",
+      "original_sha256": "16c8a1078d9cd5ec5f322cf52e89682f9225560b845fb88df9222b169a8d21b4",
+      "bytes": 2488,
+      "archived_sha256": "c547e00c82be25927945431baeec4cce3b07f673ddce993ccfcc00c706be3c69"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2B项修复记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2B项修复记录.md",
+      "original_sha256": "da81b16987a8ff0cffd8dbecb29966661eb74135642c6728a77e1eea42073332",
+      "bytes": 1830,
+      "archived_sha256": "19ee6a637f33480c4991bfb9498f14030b37537539fc9133de8664d13fd9fd9d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2B项修订复核结论.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2B项修订复核结论.md",
+      "original_sha256": "acde28c5413aba5580b9230826af31b43214dbd114267ea98f330c5c363077b9",
+      "bytes": 6016,
+      "archived_sha256": "36de29f55ae9ca8ea16e394c72993dd64a97f8c2f48467f47fe93fbf9844b7fc"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2R项二次复核结论.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2R项二次复核结论.md",
+      "original_sha256": "6e8c1a1012ef24897c2781b0d19d5e68309f32d1da9cc6fa572c9b27a0678590",
+      "bytes": 2919,
+      "archived_sha256": "3b444b4f5c12b3b79fadf247458077215e5df0e975400abc6dab978b68c09d16"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2R项最小修复与验证记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2R项最小修复与验证记录.md",
+      "original_sha256": "75b4dccbb5788c3c83f65dc1acdfa69d0d1c06c535f8df1d913247ab753defaf",
+      "bytes": 2224,
+      "archived_sha256": "ffe4139dc5af46f77859eb27ae9231db1b67558c67eacf811f9c249dc169e765"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2七项设计决定复核意见.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2七项设计决定复核意见.md",
+      "original_sha256": "379f78026d6e9e9945939e667510ab3341c288869125aa869da383f8857d3f4b",
+      "bytes": 10352,
+      "archived_sha256": "fa244b31d99719384d84b3d822edaad39bbb36e6d91a64dc6c0ff56b426941fd"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2修订包二次复核结论.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2修订包二次复核结论.md",
+      "original_sha256": "06faa9d1e1585b4bffdd6dc7ec726b3ae1a55c04620a5412217930642620f936",
+      "bytes": 7299,
+      "archived_sha256": "0251c5b2526899ad7cb948b74031111c54793af0df299cab04a7a83f3338501f"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2修订评审包与验证记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2修订评审包与验证记录.md",
+      "original_sha256": "c9bdec6dc508619109883256e048c65c26b62a074718f722177f584126789519",
+      "bytes": 2962,
+      "archived_sha256": "814030858746c6eef6d65f10a55769c410d24b38a42c7173fd5c45bfed7d5b92"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2复核与开发职责划分.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_M2复核与开发职责划分.md",
+      "original_sha256": "c35798575f757970838d88ca4f47f360b6aeebfe632def1941284b1181115135",
+      "bytes": 6576,
+      "archived_sha256": "570db1ac93d45fb8bb357b66e4690633ed334f063307a11f3d5285f82bb9db2e"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M2长解释与中央关联评审包.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M2长解释与中央关联评审包.md",
+      "original_sha256": "554da8e6e525009a8bba29dedf9d2aaf945e713a5dd49383d7501fa11411dee3",
+      "bytes": 7834,
+      "archived_sha256": "fd23da15811b092d2d43871019bb8812038979d9fd9f8450abddc4ce9dd9720b"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M3-alpha二次独立复核结论.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M3-alpha二次独立复核结论.md",
+      "original_sha256": "cefdd1094a6967bd1dfccee6355715efccb14dc9518911c3ac6b83fbba96f2f0",
+      "bytes": 2291,
+      "archived_sha256": "7143a1e2d1b4d48160bbd4fd1cd9d1e76ba4070a268fdea828b785148886a637"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M3-alpha实施与验证报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M3-alpha实施与验证报告.md",
+      "original_sha256": "64e0fe7b03ec9feaeee5347b297979eb070c408f065a87e2d38577fcb391d69d",
+      "bytes": 2845,
+      "archived_sha256": "99812728b3cad5a67e825754a9fd78f1058dd8369af76623eb0414fc8beb924b"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M3-alpha独立复核结论.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M3-alpha独立复核结论.md",
+      "original_sha256": "0c5aa2f64c827a8d145f3f2e28c0844c981f6796d1dc71dae88e8ad1417ee1fb",
+      "bytes": 3109,
+      "archived_sha256": "14fdc72923d322a134d28cd7f86d30368353c6e337ea04ce0546ac34961f038d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M3-alpha长解释与学习对象关联任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_M3-alpha长解释与学习对象关联任务书.md",
+      "original_sha256": "f9df422c4986ddb00d0438566b1dc580ba69fa31aeb75639afe446f0a035ecde",
+      "bytes": 8542,
+      "archived_sha256": "1c92e56d17d364a7c4c1acd89df2a4a70319a3049b226da462369bd1c12bb896"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M4公开夹具普通中文复核记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M4公开夹具普通中文复核记录.md",
+      "original_sha256": "ebc1e4a19eb5cbee9ab0faf0c9ad56fe9d92257370d9cec1ef7f5b8a5f42fb99",
+      "bytes": 3838,
+      "archived_sha256": "575716a5393655ca1f7885fa524f8673726429bf1bce16f14354b7e4b57cf66d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M4公开夹具预检报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M4公开夹具预检报告.md",
+      "original_sha256": "00f6ba5910dbe07c944d4766a1ba69a938f3ab20c696d87cdebb5ecb192df894",
+      "bytes": 3967,
+      "archived_sha256": "ab809431f3c1c6779faaf26b2dfe79b423d99b81686dcb754145043cecea6125"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M4执行配置草案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_M4执行配置草案.md",
+      "original_sha256": "1f5446d2e02b3a40f257290682d231be0d9d44d76c94960d8713996480a64419",
+      "bytes": 1694,
+      "archived_sha256": "c44ca215cca85900ff6d1165521d8ff570e8ed2396e71da6470f868dbdc0eb8a"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M4正式阶段报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_M4正式阶段报告.md",
+      "original_sha256": "90b9d80a7f9e8f295dcceec5f48e802d05289d1ea85ccbd23aa8caec9b768079",
+      "bytes": 3008,
+      "archived_sha256": "d6de07b51bb2c7ce175bf61245a6335d50ccdf41ba6e8071f97ed1ef92becf51"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_M4真实资料与真实模型隔离验证任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_M4真实资料与真实模型隔离验证任务书.md",
+      "original_sha256": "0b399a49edf8cb2b21c5d48d7f7e5ac87de32b06aecb41fc07c144a67be36619",
+      "bytes": 7630,
+      "archived_sha256": "801152f0029043945789476ea8010abcd351f7f0226ea0b230332f661745dc8a"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_产品设想与现有设计一致性审查.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/20261124_产品设想与现有设计一致性审查.md",
+      "original_sha256": "9a214cea00a5cbeefbf73dde17d7619fd99d700537d46e0aec2363fe1412049a",
+      "bytes": 15095,
+      "archived_sha256": "01c209532620568a78484889baef663e0b64ab2d1b1c0d5a3cfb606e4dc3d8a0"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_学习工作区纠偏路线与开发交接计划书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_学习工作区纠偏路线与开发交接计划书.md",
+      "original_sha256": "065a40791f253231c5e80de8148c25a7ad72c20f304003184a5173c0d914d6de",
+      "bytes": 30218,
+      "archived_sha256": "d9f1bd3731249e5e64ded31989650f46995dbd3ac279f06b2185de883a95dc8b"
+    },
+    {
+      "original_path": "exam-engine/docs/development/20261124_开发流程纠偏与阶段出口计划书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/20261124_开发流程纠偏与阶段出口计划书.md",
+      "original_sha256": "616bef9507042fbaac3f1f7d9acb858fbb664276fcc6da6cd3d719947fc6bba4",
+      "bytes": 5570,
+      "archived_sha256": "39adc4fe3fee9a5edd539bbafcc3379e8be5f1acd0fcfb016f6da3b16d571f92"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V01_FE-V02_20261123验收记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V01_FE-V02_20261123验收记录.md",
+      "original_sha256": "fa7db7b9c993e231dc3b466970cb15845ddb406752a9985eb5444d6ec6c5cb22",
+      "bytes": 10653,
+      "archived_sha256": "c30af1f206f2dd9d93c82a71b82e9f350873dc85399852d80ffd85f8238dbd0f"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V01_开发与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V01_开发与验收报告.md",
+      "original_sha256": "c4ce7cb087a8ed9e5f9037131c4ea53530cc155204b82c138693c0a694ed84cd",
+      "bytes": 11285,
+      "archived_sha256": "d577217f6bdfbb7eb10f9e9b09b6a0ed4f109c1e06d60882b3372741a949c697"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V01_脱敏样例.json",
+      "archive_path": "exam-engine/docs/archive/20261124/样例/FE-V01_脱敏样例.json",
+      "original_sha256": "8cef713cfe0fa508d4365205b51ecc0dc0a62fe6ad6c8abde15057aef80239a7",
+      "bytes": 4557,
+      "archived_sha256": "8cef713cfe0fa508d4365205b51ecc0dc0a62fe6ad6c8abde15057aef80239a7"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V01_课件阅读与批注技术验证任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V01_课件阅读与批注技术验证任务书.md",
+      "original_sha256": "e97d609472d252a0de32b34b1cf394b32f3a6df2a9b668d240632034beffaf78",
+      "bytes": 21091,
+      "archived_sha256": "c84c42e51f95e09f160443f0006668cd6b2dcd762964e1621eac8ecd4cb7aa37"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V02_D3工具栏与阅读体验.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V02_D3工具栏与阅读体验.md",
+      "original_sha256": "0af54a24b4c64842c81381ab59cb24b9369204d25a31f547824e9f640c7525f4",
+      "bytes": 11268,
+      "archived_sha256": "0ededda09b4306d3e093b03987013df74539a740d32fe1677cb757c4f28d6d41"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V02_电脑端资料阅读工作台设计与实现任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V02_电脑端资料阅读工作台设计与实现任务书.md",
+      "original_sha256": "6068d476066030d323c9bce385b399f71fd9f4fc3881370cedd4bea341dd0b57",
+      "bytes": 19338,
+      "archived_sha256": "09ba947dff2d034030c3b26ea6c2d4dfbdaa22297399362fe50717898bdea11d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V02_设计评审与实施报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V02_设计评审与实施报告.md",
+      "original_sha256": "729e2da503f83ac8d92334f66500bfb3e742313d3dbff3221246c7e398a79299",
+      "bytes": 11785,
+      "archived_sha256": "435f91cb89ae1ec401a297968d01732a57e54634d843489d019a6d4136f167b5"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V03_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V03_实施与验收报告.md",
+      "original_sha256": "7d5cfc4fcded7855e9ff6d23f538f92869041fba80e364a60eec5e97019c1574",
+      "bytes": 5429,
+      "archived_sha256": "446904ed3b62d04b11b9ee3e0ec256f6f9174f3fc3119c8faf45a8f3ef6eb7e8"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V03_课程资料接入与阅读笔记持久化任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V03_课程资料接入与阅读笔记持久化任务书.md",
+      "original_sha256": "76192ee15d74141d0acf31631e2f0b8fede491e9bf76154f54a16637ba4e51e5",
+      "bytes": 2260,
+      "archived_sha256": "3e31e0e2ae73b83ec8e4ed23759a30e5e8dec2940a4ee3234f66d558ee1094bf"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V04_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V04_实施与验收报告.md",
+      "original_sha256": "55549fad22f55f111067448a8a8f974cd04ddef291812f29fe87fc02fd9e81bd",
+      "bytes": 5309,
+      "archived_sha256": "ee6facb465b6fc16194162e3d482cc1c801e8458b3774fcb35b443f296e87184"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V04_统一助手会话与上下文适配.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V04_统一助手会话与上下文适配.md",
+      "original_sha256": "7e3f1511b126679fb6e8cb127eefa3980ccc68e0628d75e9875dc3cfecfb4bbc",
+      "bytes": 1372,
+      "archived_sha256": "2ff48316745502edbee67c7015366e157e8f923efd685df0e03d31621180aae4"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V05_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V05_实施与验收报告.md",
+      "original_sha256": "0db40523011472e97c4f9c6a8ed34da8c129414c38b8b0cdbc5da8c9ed9de9f7",
+      "bytes": 5760,
+      "archived_sha256": "188d4ffa881285972bd99007c789f902b4f406fedcbb807dd70223e836dbad75"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V05_服务端助手会话与发送契约.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V05_服务端助手会话与发送契约.md",
+      "original_sha256": "84de84aded129587c59b82dff9a4ce411fe64cd07f36bd9a5b97d7a3d7b2406c",
+      "bytes": 1117,
+      "archived_sha256": "c5bd42d58a0208728a845198cf763d6a30f25cb34e2271c1f5b1156b55a3733f"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V06_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V06_实施与验收报告.md",
+      "original_sha256": "5be98ce23cb2fff2dc2ba3ec64567b967acbdcc64177ed89bf2d918255c3ebf3",
+      "bytes": 14093,
+      "archived_sha256": "f2640d1adfea286697463a2a0f8538b11bd2149c7bb7a58e505f94f3f2e176fd"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V06_资料入口与跨页面体验整合任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V06_资料入口与跨页面体验整合任务书.md",
+      "original_sha256": "f769bfc7d80c772ae42ef947f0e5b48a1519fad9ded7dfc4545ad27d1f296c3f",
+      "bytes": 19191,
+      "archived_sha256": "666e1afb276225cda41f268d3b689b712ac23137ba4829afc3aadd6af8b127ac"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V07_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V07_实施与验收报告.md",
+      "original_sha256": "a7b7a44d49a760942b642887a7553d7d6f4126939af8079511133ceabf9d8584",
+      "bytes": 17947,
+      "archived_sha256": "3ecabeabd40cea942d8cef831ae764e38c3ee700ac59e73673359ee209f27402"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V07_树形导航课程总览与批注擦除任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V07_树形导航课程总览与批注擦除任务书.md",
+      "original_sha256": "ab70cde4529f6e484dede5b87fb38cd1ef785265c7b670d660d7c1db62e363ce",
+      "bytes": 17518,
+      "archived_sha256": "657acb4964ebfd8da44d5001a2b2e8b8d610479a31f4a203dc675033775f0aca"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V08_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V08_实施与验收报告.md",
+      "original_sha256": "22b521525b5433323ba248bdc1f58ed9bd9a699e024cec93ced5502160efcaa6",
+      "bytes": 10374,
+      "archived_sha256": "015b5be4c7fe34582c3b0da58793e47938e403fb0a9b7e7920d575064e58cf2d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V08_接口与持久化契约.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V08_接口与持久化契约.md",
+      "original_sha256": "9e1e7b3974e1eb1c9b7b37390e80be15b7bc36ae005985f0e56ea0a21393a0dc",
+      "bytes": 5297,
+      "archived_sha256": "2e054218c70b2ba3a012af51ac99c153bb07c953b9162e4c7e2ad0ef66b5ae3d"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V08_无模型任务主题与上下文底座任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V08_无模型任务主题与上下文底座任务书.md",
+      "original_sha256": "58334eb573304603e8090bfc3dfb3c4fda9e017e72b5465c9ac5f84fe5570d94",
+      "bytes": 17279,
+      "archived_sha256": "9d1a03e4aa45a75cd83ce0d13d33b8a5e18facea6c342c83bce84978edbf33c7"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V09_交互样板与实现说明.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V09_交互样板与实现说明.md",
+      "original_sha256": "f49c72186ea4f7a3f1a76e6bac7f0d92c6cb852546fd0a27fe1119006d1f8a69",
+      "bytes": 10368,
+      "archived_sha256": "53d80ca47e911a54ffedd7275163b2ced1dccee73a7794e72b6b78b9a4992d73"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V09_独立检查与待修问题.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V09_独立检查与待修问题.md",
+      "original_sha256": "8bf73ae4cae60fca6123f3e0984e594ca72e02a9541605d40f8f97a2f81057a8",
+      "bytes": 7231,
+      "archived_sha256": "77bfea53c645b4877992c83880205a47fad11f91fb6dc1fab81fd4ecd492a166"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V09_统一助手交互收敛与界面重设计任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V09_统一助手交互收敛与界面重设计任务书.md",
+      "original_sha256": "55086307ea84be0143e645e40d23bc1da6d1fce81a36858f6e69f1337cac5d3e",
+      "bytes": 15151,
+      "archived_sha256": "3f985238ce47798ca15a92cfe17e1d8b9c71baef77b909dbd06ad8972f27cb9a"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_三场景人工核对简表_20261124.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V10_三场景人工核对简表_20261124.md",
+      "original_sha256": "86c586b4f856741875b7b7e29ae2b9bfd69bf0b1471a62a8ff7890af6bf4204d",
+      "bytes": 4215,
+      "archived_sha256": "a753d5b52f733dd79898bf7fed8e66487f03f78531482502aec79a4a633a97d9"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_剩余九场景人工核对表_20261124.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V10_剩余九场景人工核对表_20261124.md",
+      "original_sha256": "c44504b6acda79cd075d1bcfbfc2f9743a3dc2c81e0bb76f61e1fc9e5608d32a",
+      "bytes": 7814,
+      "archived_sha256": "5f6b26c439664ec04254a1dce4478516c85c76f49017684336ba6da04937e791"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_复核与待收口问题_20261124.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V10_复核与待收口问题_20261124.md",
+      "original_sha256": "7b8ae5880b22a7ea8d4c52160bf4f7f9d40b4734057ae5a5429882dbc3a67a2b",
+      "bytes": 6758,
+      "archived_sha256": "77ff5fc66a5057a565438053a09592ed18ff8152305eec52315473c07cb12617"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_实施与验收报告.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/FE-V10_实施与验收报告.md",
+      "original_sha256": "df3d888e017c6e9d8fb10a5a246bb63e618fbf6acf2bee473a2db2bd303a7724",
+      "bytes": 9526,
+      "archived_sha256": "4372555a21a89b31cb87f5d3e632927e545bc81026ca9d6b507296b1477e3df4"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_接口与迁移契约.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V10_接口与迁移契约.md",
+      "original_sha256": "f52e3dc873539296129ffb4539c6d6227c35ae73e4a2323a45f1ec3b1666b1c5",
+      "bytes": 3523,
+      "archived_sha256": "1c77c5f4d8f6f6274526106257127c7c6ba67c89f4297b4d8d1d44dbe5a1bd3c"
+    },
+    {
+      "original_path": "exam-engine/docs/development/FE-V10_真实AI回答与可核验引用最小闭环任务书.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/FE-V10_真实AI回答与可核验引用最小闭环任务书.md",
+      "original_sha256": "e837509984ec7547bd2d524c5be90f07f5394294cb4baef4256aaec9c257f1bf",
+      "bytes": 24414,
+      "archived_sha256": "7e8bf4554a18435f48a24524a5a14f1df90d4c4eced91fa366dceb6974f51834"
+    },
+    {
+      "original_path": "exam-engine/docs/development/HUST前端设计调研与迁移建议.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/HUST前端设计调研与迁移建议.md",
+      "original_sha256": "dc94f877127f3df93a295fac0ef1d0352578dfa4d9d2625209265ed5d5d3e7df",
+      "bytes": 14465,
+      "archived_sha256": "61b13c5eb5e5d1f0f991b0d9c61928edceca131aed6942b8f83b98c0620bead5"
+    },
+    {
+      "original_path": "exam-engine/docs/development/PR-01_共享会话契约.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/PR-01_共享会话契约.md",
+      "original_sha256": "9312d0f321b7330473b989ed606faa1366ed346c4b5c34f344261862f8f751e6",
+      "bytes": 7123,
+      "archived_sha256": "bdea48d11efa2662ebcd02945649eda6b2c7b55022b4583ea222c3950f80a002"
+    },
+    {
+      "original_path": "exam-engine/docs/development/PR-02_学习服务职责拆分.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/PR-02_学习服务职责拆分.md",
+      "original_sha256": "a33389c6eb07cd06e48d9158937f8f7342e672eaba971fac75df06dcb7f7bc2d",
+      "bytes": 10740,
+      "archived_sha256": "87814076df257a7b19d7b799e8eda17ed7756d79e8b2ffc9ef3709c2836fa7be"
+    },
+    {
+      "original_path": "exam-engine/docs/development/PR-03_学习HTTP入口与依赖.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/PR-03_学习HTTP入口与依赖.md",
+      "original_sha256": "5e7998abd3ca6989d6b4e17e442e1beddb7a5c9ecab36fb1de800567480971a6",
+      "bytes": 6629,
+      "archived_sha256": "aa73a2f9a70c2e8bc2f3db0726f0592b3540a8b5c475bef7eec08599487cedf6"
+    },
+    {
+      "original_path": "exam-engine/docs/development/PR-04_前端学习功能边界.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/PR-04_前端学习功能边界.md",
+      "original_sha256": "7f05e72d32c8db891b48c44f0ec9a76f133ee108815baea8c39cc732bd2a74e1",
+      "bytes": 7915,
+      "archived_sha256": "1af7e8746a30547f7347fae3250d9319be85a3afa3b441ec329e90f7d4b8df3e"
+    },
+    {
+      "original_path": "exam-engine/docs/development/PR-05_维护与验收基线.md",
+      "archive_path": "exam-engine/docs/archive/20261124/实施验收与复核/PR-05_维护与验收基线.md",
+      "original_sha256": "209fb24cb744e38786479ef13ac8bf1f7ad168cc7b86bdf6fd5958db1abca7f2",
+      "bytes": 5321,
+      "archived_sha256": "7a64bc9a82f8266c602e2bb681b8c1afcaa6458069cb3c11e0daf3a65f920a40"
+    },
+    {
+      "original_path": "exam-engine/docs/development/多模态学习Agent_任务上下文与中断恢复设计草案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/多模态学习Agent_任务上下文与中断恢复设计草案.md",
+      "original_sha256": "f34bc7d616765954c441c70d20bca0e09fd364f2dde0effe335f08a92a941acc",
+      "bytes": 21550,
+      "archived_sha256": "36ef3c2c5136d8e0367a0e91aec6269dbfb03b48e7c3ec9fd5ddd2b0252163e2"
+    },
+    {
+      "original_path": "exam-engine/docs/development/学习Agent_状态与上下文契约草案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/学习Agent_状态与上下文契约草案.md",
+      "original_sha256": "0dc4fbd9d0c556bd93ac74481c034ac0cbcbce976aa390ea59bbcc4c2705d1b7",
+      "bytes": 24700,
+      "archived_sha256": "27faee77f8a29e5b6ffec47049720a21ee0b8610ccabdb9d1173ef5e8b3f3e8b"
+    },
+    {
+      "original_path": "exam-engine/docs/development/学习Agent_需求覆盖检查与效果验证方案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/学习Agent_需求覆盖检查与效果验证方案.md",
+      "original_sha256": "f5f3a999ea1a7bcb9569ddf5522bb811794f0155c256008f6b85f3a39674c94c",
+      "bytes": 6762,
+      "archived_sha256": "b049ee82ab5741cdc5ee8d2ceb1baa5e9f7e14ec4f3a79cef481f0d6e7b8d661"
+    },
+    {
+      "original_path": "exam-engine/docs/development/学习Agent_非线性场景决策表.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/学习Agent_非线性场景决策表.md",
+      "original_sha256": "6098983903f7492ff3ef9195050d1c97bff6b80ce20e83809fb16b7f62eb469e",
+      "bytes": 15051,
+      "archived_sha256": "88cfce34373502236bf09047dc1e69f9211eb12407b00343d792320ad6a5e949"
+    },
+    {
+      "original_path": "exam-engine/docs/development/开发拆分与PR计划.md",
+      "archive_path": "exam-engine/docs/archive/20261124/阶段任务与契约/开发拆分与PR计划.md",
+      "original_sha256": "0a2046e7cf0b4a8696f467bb8d3741b98587fd328fe8a69c2ca7a0a65d8f6ee5",
+      "bytes": 34758,
+      "archived_sha256": "43d447013fc27dd356b05451d5d7ec823926cffce7b55958142c0f030be2e9ec"
+    },
+    {
+      "original_path": "exam-engine/docs/development/教学闭环与产品迭代方案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/教学闭环与产品迭代方案.md",
+      "original_sha256": "0b57fd5ac1238206d7a17f282e24f2716ceccb56e4c768f87aca6fc1593832a9",
+      "bytes": 9750,
+      "archived_sha256": "78402f9d58d56f46fcf605109b649baedddd62c08b748b4df5af218a6f164627"
+    },
+    {
+      "original_path": "exam-engine/design.md",
+      "archive_path": "exam-engine/docs/archive/20261124/原始讨论与设计/旧学习页设计.md",
+      "original_sha256": "422695899da40fb9d5b5cf3dc8de04663157afe8b3544d3e85bdbbc75fbd1153",
+      "bytes": 31569,
+      "archived_sha256": "e5329a81cf9b67042c4d45696239f3a54c0360ca495c0a1d8b63abc41e65adab"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/01_产品原则.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/01_产品原则.md",
+      "original_sha256": "b77a833a30ac6d6ebed32b3b926ce94e801d624b82f143cc344415c5614a9e3f",
+      "bytes": 5035,
+      "archived_sha256": "dffea4e83964712e1ce3d2e5b702dd6972b896178f97c83cbb0f398602579b33"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/02_核心开发规范.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/02_核心开发规范.md",
+      "original_sha256": "5c5f3e013a01eb1ad317e2d950d119bc82bb00080fc556bd02f2395b42207d6b",
+      "bytes": 9161,
+      "archived_sha256": "98ad36d1da270e7dbfa27565fdb802616f6ce20268e89c6d6916377f73b32e5c"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/03_当前状态与开发接手.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/03_当前状态与开发接手.md",
+      "original_sha256": "c92f01536df251bbc2a903d5bb25c7dec53170fe92d40c76b6aa7a3e879aa1b8",
+      "bytes": 8224,
+      "archived_sha256": "fff4c02df477d1f232dad786b6c9cf4f362eb3c57755313da5e7b45d2b5b93b9"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/04_后续开发路线与试用计划.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/04_后续开发路线与试用计划.md",
+      "original_sha256": "93a1051b57e2f3723ccf233eb9a69a390a928fcf3f1d0d3bb04f62f2aff45f50",
+      "bytes": 5373,
+      "archived_sha256": "8282a4b46028bbd1096e3925894b75aca498bc682b19a246e3bf9e7a4c62a623"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/05_技术研究摘要.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/05_技术研究摘要.md",
+      "original_sha256": "9d887f8d276bfd6875d81ec0f31c33c2de241b9104d340eb221ebbb82a5ff790",
+      "bytes": 11399,
+      "archived_sha256": "48459cbb9eaebf699643da916bbd5e0e5192a581d55d581477b2aef269723755"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/README.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/README.md",
+      "original_sha256": "bc74cbd078deea1e9072589568b7b0c9f537f4d307f9bc244883820540474ef7",
+      "bytes": 4888,
+      "archived_sha256": "a8b91bca23de61a72e7f72824e05ad9d086bb8d7b7989476be06c8a6b5cd62c9"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/development/教学交互首轮开发方案.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/development/教学交互首轮开发方案.md",
+      "original_sha256": "fae60c104388d4bcf26c0d2f7ecacd42d0779bf6c6c8cbc67022247c55140a29",
+      "bytes": 32435,
+      "archived_sha256": "4cbc002aaed09767e82d31a56fb6a1755270e9d37ef651f9b54151d8c90f963a"
+    },
+    {
+      "original_path": "Exam_Engine_Docs/records/验收记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/早期核心文档/records/验收记录.md",
+      "original_sha256": "042cbd313c4e62155ca776193b1141dff7ca24e2890d76f32e67c8332a82b27b",
+      "bytes": 47682,
+      "archived_sha256": "735138c3d2adf8d03e6c6fbfd24cb6db56796735f22a323f2d19d6a32ab1c721"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-checks-and-signals.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-checks-and-signals.md",
+      "original_sha256": "8d4f32c438abd3b0c285686be1ae07e8068bf0aea25355344763cbb0c558eb11",
+      "bytes": 7473,
+      "archived_sha256": "232b9f10f6b05cd72a669886b36a1bd78ceed5bf04612b8be717b89eba02b73c"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-cross-session.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-cross-session.md",
+      "original_sha256": "61a290be4ffecff95e0fa77b47143b9a4f6e020c167f6b689ee3efa74068caa6",
+      "bytes": 5462,
+      "archived_sha256": "f9ecaa4c1650514f1432b671ff56e99ef17051c9646fbdc70ee3477fa70551d7"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-help-boundaries.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-help-boundaries.md",
+      "original_sha256": "3194829f34d0eee4485851c2f12449c3f20a51bc87423f3c1effc2d7fc160027",
+      "bytes": 7206,
+      "archived_sha256": "46f0992a6080f10a576cef19fc6f1da019c086aa92bb05b4b442d1e20e88d28c"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-pdf-render.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-pdf-render.md",
+      "original_sha256": "5ce5f8e51b334d4bfa5e2cb1005a5fa1c431bc99afdeeb75d303cf9b94fa32b2",
+      "bytes": 3311,
+      "archived_sha256": "faf2473e77f58db115ac554ef6523672b0a855167fbe400ba2636087730c29d2"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-signals-grading.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-signals-grading.md",
+      "original_sha256": "51126b97b0ddc3fbaa55daa4b3123a53e67a4a47d433d319a6d8ee765f23e5a6",
+      "bytes": 4850,
+      "archived_sha256": "894265a9d62b3244365a82c88b1a3ba08c16e047c28dad17463f7713609e02f5"
+    },
+    {
+      "original_path": "exam-engine/evals/tutoring/review-2026-11-09-three-topics.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-three-topics.md",
+      "original_sha256": "3a0100dcaba1d339f401885d324d7ba346987240ac578e163d90004d68ba31dd",
+      "bytes": 8188,
+      "archived_sha256": "d737ef0e7a12aefed21fc46de22ed0282e506e51508d806a7c38a13d5362c504"
+    },
+    {
+      "original_path": "exam-engine/evals/assistant-v10/真实测试续记_20261124.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/assistant-v10/真实测试续记_20261124.md",
+      "original_sha256": "16d1c3cf2541601d6d7ed7f2c8ef3acde90edcd12000b871ce6434fe3965ebbd",
+      "bytes": 5247,
+      "archived_sha256": "c430c22b68c4a69b9bff3e91289ed389194205140567d6ee271316fe406d9d13"
+    },
+    {
+      "original_path": "exam-engine/evals/assistant-v10/本人短试用记录.md",
+      "archive_path": "exam-engine/docs/archive/20261124/模型评测历史/assistant-v10/本人短试用记录.md",
+      "original_sha256": "ec71323572e4c41ae418b44bac69c5ed499c09282e17acca1da3267398c91f04",
+      "bytes": 1098,
+      "archived_sha256": "b187adfbb8006b52f93ccaae2c0a77d3d3657899c01c3966bff79aeb2a39fa7f"
+    }
+  ]
+}

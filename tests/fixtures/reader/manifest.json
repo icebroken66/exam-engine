@@ -1,0 +1,47 @@
+[
+  {
+    "file": "corrupt.pdf",
+    "bytes": 24,
+    "sha256": "50b6e61bd3e0980f0f999eeb44db795d91d6b8c24f60b23a676ea3bddd7baabe",
+    "source": "authored public fixture",
+    "permission": "CC0-1.0; generated fixture content only; system fonts not redistributed",
+    "pages": null,
+    "textLayer": "not yet verified"
+  },
+  {
+    "file": "mixed.pdf",
+    "bytes": 48822,
+    "sha256": "348f331e7e1d02e63cbd26e77883c91a91680ccf9a1360b010a907102c8631ac",
+    "source": "authored public fixture",
+    "permission": "CC0-1.0; generated fixture content only; system fonts not redistributed",
+    "pages": 3,
+    "textLayer": "PDF pages 1-2 yes, page 3 image only"
+  },
+  {
+    "file": "representative-12p.pdf",
+    "bytes": 49793,
+    "sha256": "fa1de0475fc1bdada9824681a4326347676985e6427acd6376ccf92baa4124a2",
+    "source": "authored public fixture",
+    "permission": "CC0-1.0; generated fixture content only; system fonts not redistributed",
+    "pages": 12,
+    "textLayer": "not yet verified"
+  },
+  {
+    "file": "representative-5p.pptx",
+    "bytes": 34737,
+    "sha256": "df0d53b22ee14e40bee481706e1f0ba97350e34015b7008c9e1824bf097e05e5",
+    "source": "authored public fixture",
+    "permission": "CC0-1.0; generated fixture content only; system fonts not redistributed",
+    "pages": 5,
+    "textLayer": "not yet verified"
+  },
+  {
+    "file": "same-name-v2.pdf",
+    "bytes": 48251,
+    "sha256": "acedd964e74f744ba47dc152383f6efad3dffaada55898eac5e9439a69bdf3ed",
+    "source": "authored public fixture",
+    "permission": "CC0-1.0; generated fixture content only; system fonts not redistributed",
+    "pages": 3,
+    "textLayer": "PDF pages 1-2 yes, page 3 image only"
+  }
+]

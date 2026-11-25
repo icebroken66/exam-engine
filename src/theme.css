@@ -1,0 +1,15 @@
+/* Shared application roles; BoardUI free semantic foundations. */
+:root {
+  --app-surface: var(--color-background-primary-default);
+  --app-muted: var(--color-background-secondary-default);
+  --app-ground: var(--color-background-full);
+  --app-ink: var(--color-text-primary);
+  --app-secondary: var(--color-text-secondary);
+  --app-line: var(--color-separator-border);
+  --app-accent: var(--color-accent-700);
+  --app-selected: var(--color-accent-50);
+  --app-danger: var(--color-red-700);
+  --app-warning: var(--color-amber-50);
+  --app-focus: var(--color-border-focus-ring);
+  --app-font: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+}

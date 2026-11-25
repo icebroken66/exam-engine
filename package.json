@@ -13,24 +13,35 @@
     "demo:prepare": ".venv\\Scripts\\python.exe scripts/prepare_demo.py",
     "preview": "vite preview",
     "test:ui": "playwright test",
-    "test:maintenance": "node scripts/verify-maintenance.mjs"
+    "test:maintenance": "node scripts/verify-maintenance.mjs",
+    "reader:prepare": "node scripts/prepare-reader.mjs",
+    "postinstall": "node scripts/prepare-reader.mjs",
+    "prebuild": "node scripts/prepare-reader.mjs",
+    "predev:web": "node scripts/prepare-reader.mjs",
+    "test:reader": "playwright test --config playwright.reader.config.ts"
   },
   "dependencies": {
+    "@remixicon/react": "4.9.0",
     "katex": "^0.19.1",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "6.5.438",
     "react": "^19.0.0",
+    "react-aria-components": "1.22.1",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
+    "@tailwindcss/cli": "4.3.5",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "4.3.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

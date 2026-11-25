@@ -1,0 +1,64 @@
+/** Real temporary HTTP server, SQLite, installed Edge/Chrome; gateway dispatch forbidden. */
+import {spawn,spawnSync} from 'node:child_process'
+import {mkdirSync,mkdtempSync,openSync,closeSync,readFileSync,writeFileSync} from 'node:fs'
+import {createHash} from 'node:crypto'
+import path from 'node:path'
+import os from 'node:os'
+import {chromium,expect,request} from '@playwright/test'
+const evidence=path.resolve('data/acceptance-fev08/live-'+Date.now()),temp=mkdtempSync(path.join(os.tmpdir(),'fev08-live-'));mkdirSync(evidence,{recursive:true})
+const port=8027,web=7197,base='http://127.0.0.1:'+web,python=path.resolve('.venv/Scripts/python.exe')
+const env={...process.env,MODEL_PROVIDER:'mock',EXAM_ENGINE_DATA_DIR:temp,DATABASE_URL:'sqlite:///'+path.join(temp,'test.db').split(path.sep).join('/'),EXAM_ENGINE_API_URL:'http://127.0.0.1:'+port,PYTHONUTF8:'1',FEV08_ISOLATED_FIXTURE:'1'}
+for(const key of Object.keys(env))if(/^(OPENAI_|MODEL_(?!PROVIDER)|PYTHONPATH$)/i.test(key))delete env[key]
+const fds=[],children=[],results=[],cmd=(rev,more={})=>({schema_version:2,command_id:crypto.randomUUID(),expected_revision:rev,...more})
+function start(command,args,name){const fd=openSync(path.join(evidence,name+'.log'),'a');fds.push(fd);const child=spawn(command,args,{cwd:process.cwd(),env,windowsHide:true,stdio:['ignore',fd,fd]});children.push(child);return child}
+const bootstrap="from app.main import create_app\nfrom app.model_gateway import ModelGateway\ndef forbidden(*args, **kwargs):\n raise RuntimeError('FEV08_GATEWAY_FORBIDDEN')\nModelGateway.generate_json=forbidden\napp=create_app()\nimport uvicorn\nuvicorn.run(app,host='127.0.0.1',port="+port+")"
+let api=start(python,['-c',"import sys;sys.path.insert(0,'backend');"+bootstrap],'api')
+start(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(web),'--strictPort'],'web')
+let http
+const b=(p,n)=>p.getByRole('button',{name:n,exact:true}),ready=p=>expect(p.locator('.rl-page')).toHaveAttribute('data-ready','true')
+async function json(response){expect(response.ok(),await response.text()).toBe(true);return response.json()}
+async function waitApi(){await expect.poll(async()=>{try{return(await http.get('/api/health')).status()}catch{return 0}},{timeout:30000}).toBe(200)}
+async function region(p){const box=await p.locator('.rl-page').boundingBox();await p.mouse.move(box.x+.2*box.width,box.y+.2*box.height);await p.mouse.down();await p.mouse.move(box.x+.4*box.width,box.y+.3*box.height,{steps:4});await p.mouse.up()}
+async function save(p,value){await p.getByLabel('本主题问题草稿',{exact:true}).fill(value);await b(p,'保存主题草稿').click();await expect(p.getByTestId('workspace-save-status')).toHaveText('已保存到服务端')}
+async function nativeScreenshot(p,file){const c=await p.context().newCDPSession(p),m=await c.send('Page.getLayoutMetrics'),r=await c.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip:{x:0,y:0,width:m.visualViewport.clientWidth,height:m.visualViewport.clientHeight,scale:1}});writeFileSync(file,Buffer.from(r.data,'base64'));await c.detach()}
+try{
+ http=await request.newContext({baseURL:base});await waitApi()
+ const courses=[]
+ for(let i=0;i<2;i++){
+  const course=await json(await http.post('/api/courses',{data:{school:'公开夹具学校',name:'FE-V08公开课程'+(i+1)}}));courses.push(course)
+  const names=i===0?['mixed.pdf','same-name-v2.pdf']:['mixed.pdf']
+  for(const name of names){const bytes=readFileSync('tests/fixtures/reader/'+name);await json(await http.post('/api/courses/'+course.id+'/sources',{multipart:{rights_confirmed:'true',file:{name:'同名资料.pdf',mimeType:'application/pdf',buffer:bytes}}}))}
+ }
+ const seed=spawnSync(python,['scripts/fev08_public_fixture.py'],{env,encoding:'utf8',windowsHide:true});expect(seed.status,seed.stderr).toBe(0);const seeded=JSON.parse(seed.stdout)
+ const setup=seeded.find(s=>s.course_id===courses[0].id),course=courses[0],other=courses[1],sourceId=setup.source_ids[0],root='/api/courses/'+course.id+'/assistant/v2'
+ const source=(await json(await http.get('/api/courses/'+course.id+'/sources'))).find(s=>s.id===sourceId)
+ const baselineCode="import sys,json;sys.path.insert(0,'backend');from app.database import SessionLocal;from app.models import LearningSession,LearningTask,LearningAttempt,LearningEvent,TutoringTurn,UsageRecord,ReaderSnapshot,AssistantSnapshot;from sqlalchemy import select;db=SessionLocal();print(json.dumps({m.__tablename__:[{c.name:str(getattr(r,c.name)) for c in m.__table__.columns} for r in db.scalars(select(m).order_by(list(m.__table__.primary_key)[0]))] for m in (LearningSession,LearningTask,LearningAttempt,LearningEvent,TutoringTurn,UsageRecord,AssistantSnapshot)},sort_keys=True));db.close()"
+ const formal=()=>{const r=spawnSync(python,['-c',baselineCode],{env,encoding:'utf8',windowsHide:true});expect(r.status,r.stderr).toBe(0);return r.stdout.trim()}
+ const before=formal();writeFileSync(path.join(evidence,'formal-before.json'),before)
+ for(const channel of ['msedge','chrome']){
+  const browser=await chromium.launch({channel})
+  try{
+   const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message))
+   await page.goto(base+'/#/courses/'+course.id+'/overview');await b(page,'AI 学习助手').click();await page.getByText('会话与存储',{exact:true}).click();await b(page,'启用任务主题与上下文').click();await page.getByText('新主题与学习事项',{exact:true}).click();await page.getByLabel('新主题名称').fill(channel+'独立主题');await b(page,'建立新主题').click();await expect(page.locator('.aw-target-summary strong')).toHaveText(channel+'独立主题');await expect(page.getByLabel('本主题问题草稿',{exact:true})).toBeEnabled();await save(page,'独立概念，无附件也可检查');await b(page,'检查本次上下文').click();await expect(page.getByLabel('本次上下文检查结果')).toContainText('纳入 0')
+   const initialTopics=await json(await http.get(root+'/topics'));const independent=initialTopics.items.find(t=>t.title===channel+'独立主题')
+   // Fresh browser context proves server persistence, with only focus/mode preferences supplied.
+   const clean=await browser.newContext({viewport:{width:1024,height:768}});await clean.addInitScript(({id,topic})=>{localStorage.setItem('assistant-workspace-v2:'+id,'enabled');localStorage.setItem('exam-engine:workspace-focus:v2:'+encodeURIComponent(id),topic)}, {id:course.id,topic:independent.id});const second=await clean.newPage();await second.goto(page.url());await b(second,'AI 学习助手').click();await expect(second.getByLabel('本主题问题草稿',{exact:true})).toHaveValue('独立概念，无附件也可检查')
+   await save(second,'第二窗口先保存');await page.getByLabel('本主题问题草稿',{exact:true}).fill('第一窗口冲突内容');await b(page,'保存主题草稿').click();await expect(page.getByRole('alert')).toContainText('其他窗口');await expect(page.getByLabel('本主题问题草稿',{exact:true})).toHaveValue('第一窗口冲突内容');await nativeScreenshot(page,path.join(evidence,channel+'-conflict.png'));page.once('dialog',d=>d.accept());await b(page,'显式重新读取').click();await expect(page.getByLabel('本主题问题草稿',{exact:true})).toHaveValue('第二窗口先保存')
+   await page.goto(base+'/#/courses/'+course.id+'/reader?source='+sourceId);await ready(page);await page.getByLabel('缩放百分比',{exact:true}).fill('50');await page.getByLabel('缩放百分比',{exact:true}).press('Enter');await b(page,'笔刷').click();await page.getByText('添加上下文／从工作区选择',{exact:true}).click();await b(page,'从资料框选').click();await region(page);await b(page,'预览本次取材').click();await expect(page.getByLabel('待确认上下文')).toContainText('未执行OCR');await b(page,'取消本次预览').click();await expect(b(page,'笔刷')).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-annotation]')).toHaveCount(0)
+   await b(page,'从资料框选').click();await region(page);await b(page,'预览本次取材').click();await b(page,'确认绑定上下文').click();await expect(page.getByLabel('已确认上下文')).toContainText('第 1 页');await save(page,'解释这个区域');await b(page,'检查本次上下文').click();await expect(page.getByLabel('本次上下文检查结果')).toContainText('纳入 1');await nativeScreenshot(page,path.join(evidence,channel+'-reader.png'))
+   await expect(page.getByTestId('save-status')).toHaveText('已保存');await page.goto(base+'/#/courses/'+course.id+'/learn?session='+setup.session_id);await expect(page).toHaveURL(new RegExp('/learn'));if(!await b(page,'选择公开题目').isVisible())await page.getByText('添加上下文／从工作区选择',{exact:true}).click();await expect(b(page,'选择公开题目')).toBeVisible();await b(page,'选择公开题目').click();await b(page,'为此题建立事项与主题').click();await b(page,'确认绑定上下文').click();await expect(page.getByLabel('已确认上下文')).toContainText('公开题目');await b(page,'选择已提交作答').click();await b(page,'确认绑定上下文').click();await expect(page.getByLabel('已确认上下文')).toContainText('已提交：5');await b(page,'选择已显示反馈').click();await b(page,'确认绑定上下文').click();await save(page,'检查本题公开作答与反馈');await b(page,'检查本次上下文').click();await expect(page.getByLabel('本次上下文检查结果')).toContainText('纳入 3');expect(await page.getByLabel('本次上下文检查结果').innerText()).not.toContain('PRIVATE_')
+   await page.getByText(/事项恢复列表/).click();await b(page,'暂停事项').first().click();await expect(b(page,'恢复事项').first()).toBeVisible();await b(page,'恢复事项').first().click();await nativeScreenshot(page,path.join(evidence,channel+'-task.png'))
+   await page.goto(base+'/#/courses/'+course.id+'/learn?session='+setup.draft_session_id);await page.locator('#formal-answer textarea').fill('明确选择的未提交草稿');if(!await b(page,'选择当前草稿（未提交）').isVisible())await page.getByText('添加上下文／从工作区选择',{exact:true}).click();await b(page,'选择当前草稿（未提交）').click();await b(page,'为此题建立事项与主题').click();await b(page,'确认绑定上下文').click();await page.locator('#formal-answer textarea').fill('原作答后来已修改');await expect(page.getByLabel('已确认上下文')).toContainText('明确选择的未提交草稿');await save(page,'未提交快照不跟随原作答');await b(page,'检查本次上下文').click();await expect(page.getByLabel('本次上下文检查结果')).toContainText('纳入 1')
+   if(!await page.getByLabel('新主题名称').isVisible())await page.getByText('新主题与学习事项',{exact:true}).click();await page.getByLabel('新主题名称').fill(channel+'明确两项比较');await page.getByLabel('新主题范围').selectOption('compare');await page.locator('.aw-check').filter({hasText:'课程1公开计算1'}).locator('input').check();await page.locator('.aw-check').filter({hasText:'课程1未提交探索'}).locator('input').check();await b(page,'建立新主题').click();await expect(page.locator('.aw-target-summary strong')).toHaveText(channel+'明确两项比较');await b(page,'选择公开题目').click();await b(page,'确认绑定上下文').click();await save(page,'明确比较两个学习事项');await b(page,'检查本次上下文').click();await expect(page.getByLabel('本次上下文检查结果')).toContainText('纳入 1')
+   await page.evaluate(id=>localStorage.setItem('assistant-workspace-v2:'+id,'enabled'),other.id);await page.goto(base+'/#/courses/'+other.id+'/overview');await expect(page.getByLabel('本主题问题草稿',{exact:true})).toBeDisabled();await page.goto(base+'/#/courses/'+course.id+'/overview');await expect(page.getByLabel('本主题问题草稿',{exact:true})).toHaveValue('明确比较两个学习事项')
+   expect(errors).toEqual([]);results.push({channel,version:browser.version(),freshBrowser:true,casConflict:true,materialConfirmCancel:true,publicTaskAndFeedback:true,crossCourse:true,pageErrors:errors});await clean.close();await context.close()
+  }finally{await browser.close()}
+ }
+ const after=formal();writeFileSync(path.join(evidence,'formal-after.json'),after);expect(after).toBe(before)
+ // Atomic CAS with truly concurrent HTTP requests against a file-backed SQLite server.
+ const parallelTopic=await json(await http.post(root+'/topics',{data:cmd(0,{title:'并发原子CAS',mode:'independent',item_ids:[]})}));const url=root+'/topics/'+parallelTopic.id+'/composer',raced=await Promise.all([http.put(url,{data:cmd(1,{text:'并发A'})}),http.put(url,{data:cmd(1,{text:'并发B'})})]);expect(raced.map(r=>r.status()).sort()).toEqual([200,409])
+ const payload=cmd(0,{title:'丢回执重放',mode:'independent',item_ids:[]});const replays=await Promise.all([http.post(root+'/topics',{data:payload}),http.post(root+'/topics',{data:payload})]);const values=await Promise.all(replays.map(json));expect(values[0].id).toBe(values[1].id);expect((await http.post(root+'/topics',{data:{...payload,title:'异载荷'}})).status()).toBe(409)
+ // Restart real process, retaining only temporary DB; no shared in-memory cache.
+ api.kill();await new Promise(resolve=>api.once('close',resolve));api=start(python,['-c',"import sys;sys.path.insert(0,'backend');"+bootstrap],'api-restart');await waitApi();const restarted=await json(await http.get(root+'/topics/'+parallelTopic.id));expect(restarted.revision).toBe(2)
+ writeFileSync(path.join(evidence,'live.json'),JSON.stringify({status:'passed',evidence,temp,fixture:seeded,sourceHash:source.sha256,results,atomicCasStatuses:raced.map(r=>r.status()),commandReplay:true,serverRestart:true,formalUnchanged:after===before},null,2));console.log(JSON.stringify({status:'passed',evidence,results},null,2))
+}finally{await http?.dispose();for(const child of children)child.kill();for(const fd of fds)closeSync(fd)}

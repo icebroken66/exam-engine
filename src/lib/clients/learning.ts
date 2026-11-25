@@ -183,9 +183,9 @@ function learningProgressInput(session: LearningSession) {
   return { expected_task_id: session.current_task?.id, expected_progress_version: session.progress_version }
 }
 
-export function advanceLearningSession(session: LearningSession): Promise<LearningSession> {
+export function advanceLearningSession(session: LearningSession, independentCheck = false): Promise<LearningSession> {
   return request<LearningSession>(`/api/learning-sessions/${session.id}/next`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(learningProgressInput(session)),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({...learningProgressInput(session),independent_check:independentCheck}),
   })
 }
 

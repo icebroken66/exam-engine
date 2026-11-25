@@ -73,7 +73,7 @@ export function TutoringPanel({ session, disabled, onChanged, onBusy }: { sessio
     </article>
   }
   return <section className="tutoring-panel" aria-labelledby="tutoring-title">
-    <h3 id="tutoring-title">围绕当前题带学</h3>
+    <h3 id="tutoring-title">当前题带学</h3>
     <p className="tutoring-boundary">交流不提交答案、不计掌握；回复保存后计入本题帮助。</p>
     <details className="tutoring-guide"><summary>带学怎么用与独立性说明</summary>
       <p>讲你的思路、没懂的步骤，要求直接解释或质疑判分。小检查只作教学观察；帮助后答对不能算本题无提示独立成功。回复保存后可恢复，送达未确认也保守记录帮助。每条标签表示导师标记的当轮帮助；“对话支持”不会清除本题过去的帮助记录或恢复独立性。</p>

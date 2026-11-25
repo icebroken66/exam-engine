@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Archive,
   ArrowRight,
-  ChevronRight,
   Circle,
   ExternalLink,
   FileUp,
@@ -28,6 +27,19 @@ import { LearningPanel } from './components/LearningPanel'
 import { LearningHistoryPanel } from './components/LearningHistoryPanel'
 import { useCourseSources } from './lib/useCourseSources'
 import { SourceProgress } from './components/SourceProgress'
+import { UnifiedAssistant } from './assistant/UnifiedAssistant'
+import {CourseTree} from './components/CourseTree'
+import {CourseOverview} from './components/CourseOverview'
+import {allowWorkspaceNavigation,readPanels} from './lib/workspaceRoute'
+import {Button} from './reader/boardui/button'
+import {RiLayoutLeftLine,RiSparklingLine} from '@remixicon/react'
+const CourseReader=lazy(()=>import('./components/CourseReader'))
+import { ATTACH_EVENT } from './assistant/session'
+import {TutoringHostContext,TUTORING_OPEN} from './assistant/TutoringHost'
+import type {ConversationMessage} from './assistant/generation'
+import {StudyContent} from './components/StudyContent'
+import {SavedExplanationBacklinks} from './assistant/SavedExplanationBacklinks'
+import {SavedExplanationList} from './assistant/SavedExplanationList'
 
 const workflow = [
   ['01', '提供课程资料', '课件、往年卷、作业或笔记'],
@@ -36,28 +48,42 @@ const workflow = [
   ['04', '独立重测', '用新题检查是否真正掌握'],
 ]
 
-const views = [['learn', '开始学习'], ['materials', '课程资料'], ['questions', '题目校准'], ['history', '学习记录'], ['analytics', '考点概览']] as const
-type View = typeof views[number][0]
+const views = [['overview', '课程总览'], ['materials', '课程资料'], ['learn', '练习题目'], ['questions', '题目校准'], ['saved', '已保存讲解'], ['history', '学习记录'], ['analytics', '考点概览']] as const
+type View = typeof views[number][0] | 'reader'
 function readRoute() {
   const [path, query] = window.location.hash.split('?')
-  const match = path.match(/^#\/courses\/([^/]+)\/(\w+)$/)
-  return { sessionId: new URLSearchParams(query).get('session'), courseId: match?.[1] ?? null, view: (views.some(([view]) => view === match?.[2]) ? match![2] : 'learn') as View }
+  const match = path.match(/^#\/courses\/([^/]+)(?:\/(\w+))?$/)
+  return { sourceId:new URLSearchParams(query).get('source'), sessionId: new URLSearchParams(query).get('session'), courseId: match?.[1] ?? null, view: ((match?.[2]==='reader'||views.some(([view]) => view === match?.[2])) ? match![2] : new URLSearchParams(query).has('session') ? 'learn' : 'overview') as View }
 }
 
 function App() {
+  const [tutoringHost,setTutoringHost]=useState<HTMLDivElement|null>(null)
+  const legacyAssistantDebug=new URLSearchParams(location.search).get('assistantDebug')==='1'
+  const [hasTutoring,setHasTutoring]=useState(false)
+  const [assistantTab,setAssistantTab]=useState<'notes'|'tutoring'>('notes')
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(() => readRoute().courseId)
+  const [panels,setPanels]=useState(readPanels)
+  const [narrow,setNarrow]=useState(()=>innerWidth<1250)
+  const assistantOpen=panels.right
+  const setAssistantOpen=(right:boolean)=>{window.dispatchEvent(new Event('reader:cancel-gesture'));setPanels(p=>({...p,right}))}
+  const leftOpen=panels.left&&!(narrow&&assistantOpen)
+  useEffect(()=>{const resize=()=>setNarrow(innerWidth<1250);window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize)},[])
+  useEffect(()=>{try{localStorage.setItem('exam-engine:panels:v1',JSON.stringify({schema:1,...panels}))}catch{}},[panels])
+  const [sourceId,setSourceId]=useState<string|null>(()=>readRoute().sourceId)
+  useEffect(()=>{const attach=(e:Event)=>{if((e as CustomEvent).detail?.courseId===selectedId){setAssistantTab('notes');setAssistantOpen(true)}};const tutor=()=>{setAssistantTab(legacyAssistantDebug?'tutoring':'notes');setAssistantOpen(true);requestAnimationFrame(()=>document.querySelector<HTMLTextAreaElement>(legacyAssistantDebug?'.tutoring-panel textarea':'.cp-panel textarea')?.focus())};const closeForAnswer=()=>setAssistantOpen(false);window.addEventListener('exam-engine:close-assistant-for-answer',closeForAnswer);window.addEventListener(ATTACH_EVENT,attach);window.addEventListener(TUTORING_OPEN,tutor);return()=>{window.removeEventListener('exam-engine:close-assistant-for-answer',closeForAnswer);window.removeEventListener(ATTACH_EVENT,attach);window.removeEventListener(TUTORING_OPEN,tutor)}},[selectedId])
   const [view, setView] = useState<View>(() => readRoute().view)
   const [sessionId, setSessionId] = useState<string | null>(() => readRoute().sessionId)
-  useEffect(() => {
-    const sync = () => { const route = readRoute(); setSelectedId(route.courseId); setView(route.view); setSessionId(route.sessionId) }
-    window.addEventListener('hashchange', sync)
-    return () => window.removeEventListener('hashchange', sync)
-  }, [])
-  function navigate(courseId: string | null, nextView: View = 'learn', nextSession: string | null = null) {
-    setSelectedId(courseId); setView(nextView); setSessionId(nextSession)
+
+  function navigate(courseId: string | null, nextView: View = 'overview', nextSession: string | null = null) {
+    if(!allowWorkspaceNavigation())return
+    setSourceId(null);setSelectedId(courseId); setView(nextView); setSessionId(nextSession)
     window.location.hash = courseId ? `/courses/${courseId}/${nextView}${nextSession ? `?session=${encodeURIComponent(nextSession)}` : ''}` : ''
   }
+  useEffect(()=>{let previous=location.hash;let restoring=false;const click=(e:MouseEvent)=>{const target=e.target instanceof Element?e.target.closest('a'):null;if(target&&target.getAttribute('href')?.startsWith('#/courses/')&&!allowWorkspaceNavigation())e.preventDefault()};const sync=()=>{if(!restoring&&!allowWorkspaceNavigation()){restoring=true;location.hash=previous;return}restoring=false;previous=location.hash;const route=readRoute();setSelectedId(route.courseId);setView(route.view);setSessionId(route.sessionId);setSourceId(route.sourceId)};document.addEventListener('click',click,true);window.addEventListener('hashchange',sync);return()=>{document.removeEventListener('click',click,true);window.removeEventListener('hashchange',sync)}},[])
+
+  const [unsupported,setUnsupported]=useState<{name:string;id:string}|null>(null)
+  useEffect(()=>{const show=(e:Event)=>setUnsupported((e as CustomEvent).detail);window.addEventListener('course:unsupported',show);return()=>window.removeEventListener('course:unsupported',show)},[])
   const [health, setHealth] = useState<Health | null>(null)
   const [loading, setLoading] = useState(true)
   const [courseBusy, setCourseBusy] = useState('')
@@ -74,7 +100,7 @@ function App() {
         setCourses(courseResult.value)
         const wanted = readRoute().courseId
         const chosen = courseResult.value.find(course => !course.archived_at && course.id === wanted) ?? courseResult.value.find(course => !course.archived_at)
-        navigate(chosen?.id ?? null, readRoute().view, chosen?.id === wanted ? readRoute().sessionId : null)
+        if (!wanted) navigate(chosen?.id ?? null, readRoute().view, readRoute().sessionId)
       } else {
         setError('暂时无法连接课程服务。请确认前后端均已启动。')
       }
@@ -122,8 +148,8 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <TutoringHostContext.Provider value={{host:tutoringHost,available:setHasTutoring}}><div className="app-shell" data-reader={view==='reader'} data-left-open={leftOpen} data-assistant-open={assistantOpen}>
+      <aside className="sidebar" hidden={!leftOpen}>
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">急</div>
           <div><strong>期末急救引擎</strong><span>课程学习工作台</span></div>
@@ -137,17 +163,7 @@ function App() {
         <nav className="course-nav" aria-label="我的课程">
           {loading && <p className="nav-muted">正在读取课程…</p>}
           {!loading && activeCourses.length === 0 && <p className="nav-muted">还没有进行中的课程<br />从一门新课开始。</p>}
-          {activeCourses.map((course, index) => (
-            <button
-              key={course.id}
-              className={`course-nav-item ${selectedId === course.id ? 'active' : ''}`}
-              onClick={() => navigate(course.id)}
-            >
-              <span className="course-index">{String(index + 1).padStart(2, '0')}</span>
-              <span><strong>{course.name}</strong><small>{course.school}</small></span>
-              <ChevronRight size={15} />
-            </button>
-          ))}
+          <CourseTree courses={activeCourses} courseId={selectedId} sourceId={view==='reader'?sourceId:null} onNavigate={hash=>{if(allowWorkspaceNavigation())window.location.hash=hash}}/>
           {archivedCourses.length > 0 && (
             <details className="archived-courses">
               <summary>已归档课程 <span>{archivedCourses.length}</span></summary>
@@ -171,19 +187,22 @@ function App() {
 
       <main className="main-canvas">
         <header className="topbar">
-          <span>从课程资料到独立作答</span>
+          <Button size="small" variant="ghost" leadingIcon={RiLayoutLeftLine} data-navigation-trigger aria-pressed={leftOpen} onClick={()=>{window.dispatchEvent(new Event('reader:cancel-gesture'));if(narrow&&assistantOpen)setAssistantOpen(false);setPanels(p=>({...p,left:!leftOpen}))}}>{leftOpen?'收起课程导航':'展开课程导航'}</Button>
+          {narrow&&assistantOpen&&panels.left&&<span className="panel-notice">窄窗口暂收课程栏，宽屏自动恢复</span>}
+          <Button variant="ghost" size="small" className="ua-trigger" leadingIcon={RiSparklingLine} data-global-assistant-trigger aria-pressed={assistantOpen} onClick={()=>setAssistantOpen(!assistantOpen)}>AI 学习助手</Button>
           <div className={`service-status ${health ? 'online' : ''}`}>
             <span className="status-dot" />
             {health ? '服务已连接' : 'API 未连接'}
           </div>
         </header>
 
+        {unsupported&&<div className="panel-notice" role="status">{unsupported.name}：当前格式不支持工作台阅读，可下载原件；PPTX 可人工导出 PDF 后导入。<a href={'/api/sources/'+encodeURIComponent(unsupported.id)+'/file'}>下载原件</a><Button variant="ghost" size="small" onClick={()=>setUnsupported(null)}>关闭格式说明</Button></div>}
         {error && <div className="error-banner" role="alert"><span>{error}</span><button className="secondary-action" type="button" onClick={() => setConnectionVersion(value => value + 1)} disabled={loading}>重新连接</button></div>}
 
         {selected ? (
-          <CourseWorkspace key={selected.id} course={selected} view={view} sessionId={sessionId} onNavigate={(nextView, nextSession) => navigate(selected.id, nextView, nextSession)} onArchived={onArchived} onDeleted={onDeleted} />
+          <CourseWorkspace key={selected.id} course={selected} sourceId={sourceId} assistantOpen={assistantOpen} onAssistantChange={setAssistantOpen} view={view} sessionId={sessionId} onNavigate={(nextView, nextSession) => navigate(selected.id, nextView, nextSession)} onArchived={onArchived} onDeleted={onDeleted} />
         ) : (
-          <EmptyWorkspace loading={loading} onCreate={() => setShowForm(true)} />
+          selectedId && !loading ? <div className="workspace" role="alert">课程不存在或已归档。请从左侧选择课程，或恢复归档课程。</div> : <EmptyWorkspace loading={loading} onCreate={() => setShowForm(true)} />
         )}
 
         <footer className="page-footer">
@@ -192,8 +211,13 @@ function App() {
         </footer>
       </main>
 
+      <aside className="app-unified-assistant" hidden={!assistantOpen} aria-label="AI 学习助手侧栏">
+        {legacyAssistantDebug&&hasTutoring&&view==='learn'&&<div className="assistant-task-tabs" role="group" aria-label="助手功能"><Button size="small" variant="ghost" aria-pressed={assistantTab==='notes'} onClick={()=>setAssistantTab('notes')}>问题记录与上下文</Button><Button size="small" variant="ghost" aria-pressed={assistantTab==='tutoring'} onClick={()=>setAssistantTab('tutoring')}>带学对话</Button></div>}
+        <div className="assistant-task-body" hidden={legacyAssistantDebug&&hasTutoring&&view==='learn'&&assistantTab==='tutoring'}><UnifiedAssistant key={selectedId||'__workspace__'} courseId={selectedId||'__workspace__'} open={assistantOpen&&!(legacyAssistantDebug&&hasTutoring&&view==='learn'&&assistantTab==='tutoring')} onOpenChange={setAssistantOpen}/></div>
+        {legacyAssistantDebug&&<div className="assistant-task-body" hidden={!hasTutoring||view!=='learn'||assistantTab!=='tutoring'}><header className="assistant-task-header"><strong>AI 学习助手 · 当前题</strong><Button size="small" variant="ghost" onClick={()=>{setAssistantOpen(false);requestAnimationFrame(()=>document.querySelector<HTMLElement>('[data-global-assistant-trigger]')?.focus())}}>关闭题目带学</Button></header><div ref={setTutoringHost}/></div>}
+      </aside>
       {showForm && <CourseDialog onClose={() => setShowForm(false)} onCreated={onCreated} />}
-    </div>
+    </div></TutoringHostContext.Provider>
   )
 }
 
@@ -233,6 +257,9 @@ function EmptyWorkspace({ loading, onCreate }: { loading: boolean; onCreate: () 
 
 interface CourseWorkspaceProps {
   course: Course
+  sourceId:string|null
+  assistantOpen:boolean
+  onAssistantChange:(open:boolean)=>void
   view: View
   sessionId: string | null
   onNavigate: (view: View, sessionId?: string | null) => void
@@ -240,7 +267,19 @@ interface CourseWorkspaceProps {
   onDeleted: (courseId: string) => void
 }
 
-function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDeleted }: CourseWorkspaceProps) {
+function CourseWorkspace({ course, sourceId, assistantOpen, onAssistantChange, view, sessionId, onNavigate, onArchived, onDeleted }: CourseWorkspaceProps) {
+  const [explanation,setExplanation]=useState<{course_id:string;topic_id?:string;request_id:string;message:ConversationMessage;question:string;origin:string}|null>(null)
+  const [explanationError,setExplanationError]=useState('')
+  useEffect(()=>{const show=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.course_id===course.id&&value.message?.role==='assistant'){setExplanation(value);setExplanationError('')}};window.addEventListener('assistant:show-explanation',show);return()=>window.removeEventListener('assistant:show-explanation',show)},[course.id])
+  function returnToExplanationOrigin(){
+    if(!explanation)return
+    try{const origin=new URL(explanation.origin,location.href),originHash=origin.hash,current=new URLSearchParams(location.hash.split('?')[1]||''),previous=new URLSearchParams(originHash.split('?')[1]||'');if(origin.origin===location.origin&&originHash.includes('/reader?')&&current.get('source')===previous.get('source')){window.dispatchEvent(new Event('assistant:citation-back'));setExplanation(null);return}if(origin.origin===location.origin){location.href=origin.href;setExplanation(null)}}catch{}
+  }
+  async function locateExplanation(evidenceId:string){
+    if(!explanation)return
+    setExplanationError('')
+    try{const response=await fetch('/api/courses/'+encodeURIComponent(course.id)+'/assistant/v2/requests/'+encodeURIComponent(explanation.request_id)+'/citations/'+encodeURIComponent(evidenceId),{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.detail?.message||'来源已失效或无法定位')}const result=await response.json();if(result.action?.kind!=='document')throw new Error('该依据没有资料页定位');const a=result.action;const target='#/courses/'+encodeURIComponent(a.course_id)+'/reader?source='+encodeURIComponent(a.source_id)+'&citation_page='+a.page+'&citation_sha='+encodeURIComponent(a.source_sha256)+'&citation_version='+encodeURIComponent(a.preview_version);if(location.hash!==target)location.hash=target;else window.dispatchEvent(new CustomEvent('assistant:citation-location',{detail:a}))}catch(e){setExplanationError(e instanceof Error?e.message:String(e))}
+  }
   const [learningVersion, setLearningVersion] = useState(0)
   const [questionVersion, setQuestionVersion] = useState(0)
   const [visited, setVisited] = useState<Set<View>>(() => new Set([view]))
@@ -272,8 +311,8 @@ function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDe
   }
 
   return (
-    <div className="workspace course-workspace">
-      <section className="course-heading">
+    <div className="workspace course-workspace" data-reading={view==='reader'}>
+      <section className="course-heading" hidden={view==='reader'}>
         <div>
           <span className="eyebrow">{course.school}</span>
           <h1>{course.name}</h1>
@@ -292,16 +331,20 @@ function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDe
       </section>
       {managementError && <div className="learning-error" role="alert">{managementError}</div>}
 
-      <nav className="workspace-tabs" aria-label="课程功能">
+      <nav hidden={view==='reader'} className="workspace-tabs" aria-label="课程功能">
         {views.map(([id, label]) => <a key={id} href={`#/courses/${course.id}/${id}`} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined}>{label}</a>)}
       </nav>
+      {view==='overview'&&<CourseOverview course={course} state={sourceState}/>}
+      {view==='saved'&&<SavedExplanationList key={course.id} courseId={course.id}/>}
+      {view==='reader'&&sourceId&&<SavedExplanationBacklinks key={'saved-source-'+sourceId} courseId={course.id} sourceId={sourceId}/>}
+      {view==='reader'&&(sourceId?<Suspense fallback={<p role="status">正在加载阅读器…</p>}><CourseReader key={sourceId} courseId={course.id} sourceId={sourceId} assistantOpen={assistantOpen} onAssistantChange={onAssistantChange}/></Suspense>:<p role="alert">资料链接缺少来源身份。<a href={'#/courses/'+course.id+'/materials'}>返回课程资料</a></p>)}
       <div hidden={view !== 'learn'}>
         <SourceProgress state={sourceState} onOpenSources={() => onNavigate('materials')} />
         {sessionId && <div className="selected-round-banner"><span>正在继续选中的历史轮次</span><button className="secondary-action" onClick={() => onNavigate('learn')}>返回最近一轮</button></div>}
-        <LearningPanel sessionId={sessionId} onOpenLatest={() => onNavigate('learn')} courseId={course.id} refreshVersion={learningVersion} onOpenSources={() => onNavigate('materials')} />
+        {(visited.has('learn') || view === 'learn') && <LearningPanel sessionId={sessionId} onOpenLatest={() => onNavigate('learn')} courseId={course.id} refreshVersion={learningVersion} onOpenSources={() => onNavigate('materials')} />}
       </div>
       {(visited.has('materials') || view === 'materials') && <section hidden={view !== 'materials'} className="materials-view">
-        <div className="view-heading"><div><h2>课程资料</h2><p>上传课件、往年卷或笔记，解析完成后回到学习页开始诊断。</p></div><button className="secondary-action" onClick={() => onNavigate('learn')}>返回学习 <ArrowRight size={16} /></button></div>
+        <div className="view-heading"><div><h2>课程资料</h2><p>查找资料、阅读与批注；正常 PDF 无需等待 AI 解析。</p></div><button className="secondary-action" onClick={() => onNavigate('learn')}>练习题目 <ArrowRight size={16} /></button></div>
         <SourcePanel courseId={course.id} state={sourceState} />
         <details className="import-channels"><summary>其他资料来源 · GitHub / 1037</summary>
           <div className="import-channel-grid"><GitHubPanel courseId={course.id} onImported={onGithubImported} />
@@ -311,6 +354,7 @@ function CourseWorkspace({ course, view, sessionId, onNavigate, onArchived, onDe
       {(visited.has('questions') || view === 'questions') && <div hidden={view !== 'questions'}><div className="view-heading"><div><h2>题目校准</h2><p>核对提取的题目和参考答案，为后续学习提供可靠依据。</p></div></div><QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => { setQuestionVersion(version => version + 1); refreshLearningContext() }} /></div>}
       {view === 'history' && <LearningHistoryPanel courseId={course.id} onResume={id => onNavigate('learn', id)} onChanged={refreshLearningContext} />}
       {view === 'analytics' && <><div className="view-heading"><div><h2>考点概览</h2><p>查看现有资料中的考点分布，结合学习记录安排复习。</p></div></div><CoveragePanel courseId={course.id} reloadToken={questionVersion} /><AnalyticsPanel courseId={course.id} reloadToken={questionVersion} /></>}
+      {explanation&&<section className="assistant-explanation" aria-label="中央关联讲解"><header><div><span className="eyebrow">临时学习内容</span><h2>关联讲解</h2></div><div className="assistant-explanation-actions"><button type="button" className="secondary-action" onClick={returnToExplanationOrigin}>返回提问位置</button><button type="button" className="secondary-action" onClick={()=>setExplanation(null)}>关闭讲解</button></div></header><p className="assistant-explanation-question">关联问题：{explanation.question||'（历史问题正文不可用）'}</p><p className="assistant-explanation-question">{explanation.message.mocked?'模拟样本':'已发布回答'} · 不产生新请求</p>{explanation.message.claims.map((claim,index)=><article key={index} className="assistant-explanation-claim"><StudyContent allowLinks={false}>{claim.text}</StudyContent>{claim.kind==='model_explanation'&&<small>模型解释／推导，未经外部资料核验。</small>}{claim.evidence_ids.length>0&&<div className="assistant-explanation-citations">{claim.evidence_ids.map(id=>{const citation=explanation.message.citations?.find(c=>c.evidence_id===id);return <button type="button" key={id} disabled={!citation?.actionable} onClick={()=>void locateExplanation(id)}>{citation?.title||'核对依据'}{citation?.page?' · 第 '+citation.page+' 页':''} · 核对并定位</button>})}</div>}</article>)}{!explanation.message.context_active&&<p role="status">部分原始上下文已失效；以下是保留的历史讲解，不能当作当前有效依据，也不能定位失效来源。</p>}{explanationError&&<p className="assistant-explanation-error" role="alert">{explanationError}</p>}<p className="assistant-explanation-note">临时讲解不会修改原题、原件或个人批注；保存及撤销请使用助手回答消息上的明确保存操作。</p></section>}
       {showDelete && <DeleteCourseDialog course={course} onClose={() => setShowDelete(false)} onDeleted={onDeleted} />}
     </div>
   )

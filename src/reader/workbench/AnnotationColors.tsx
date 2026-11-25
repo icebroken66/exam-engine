@@ -1,0 +1,8 @@
+import { useState } from 'react'
+import { Button } from '../boardui/button'
+export const ANNOTATION_COLORS=[{name:'蓝色',value:'#215cbd'},{name:'红色',value:'#b73d35'},{name:'绿色',value:'#287359'},{name:'黄色',value:'#ffe04a'},{name:'紫色',value:'#8c5ac4'}]
+export function AnnotationColors({selectedKind,selectedColor,changeSelected,ink,highlight,note,changeDefault}:{selectedKind?:string;selectedColor?:string;changeSelected:(color:string)=>void;ink:string;highlight:string;note:string;changeDefault:(kind:'ink'|'highlight'|'note',color:string)=>void}){
+  const [target,setTarget]=useState<'ink'|'highlight'|'note'>('ink')
+  const current=selectedKind?selectedColor:({ink,highlight,note}[target])
+  return <details className="wb-color-menu"><summary title="批注颜色">颜色<span className="wb-color-dot" style={{background:current}}/></summary><div className="wb-color-popover"><strong>{selectedKind?'修改选中'+({ink:'笔迹',highlight:'高亮',note:'贴条'}[selectedKind]||'批注'):'新批注颜色'}</strong>{!selectedKind&&<div className="wb-color-targets">{(['ink','highlight','note'] as const).map((kind,i)=><Button key={kind} variant="ghost" size="small" aria-pressed={target===kind} onClick={()=>setTarget(kind)}>{['笔刷','高亮','贴条'][i]}颜色</Button>)}</div>}<div className="wb-swatches">{ANNOTATION_COLORS.map(c=><Button key={c.value} variant="ghost" size="small" aria-label={(selectedKind?'选中批注':'新'+({ink:'笔迹',highlight:'高亮',note:'贴条'}[target]))+'设为'+c.name} aria-pressed={current===c.value} title={c.name} onClick={()=>selectedKind?changeSelected(c.value):changeDefault(target,c.value)}><span style={{background:c.value}}/></Button>)}</div><small>{selectedKind?'仅修改此批注，可撤销。':'仅作用于之后新建的批注。'}</small></div></details>
+}

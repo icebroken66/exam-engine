@@ -1,0 +1,8 @@
+import {chromium,expect} from '@playwright/test'
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs'
+import {createHash} from 'node:crypto'
+import path from 'node:path'
+const dir=path.resolve(process.argv[2]);mkdirSync(dir,{recursive:true});const source=path.resolve('data/acceptance-reader-20261123-matrix02'),hash=p=>createHash('sha256').update(readFileSync(p)).digest('hex'),results=[]
+for(const channel of ['msedge','chrome']){const browser=await chromium.launch({channel});try{const page=await browser.newPage({viewport:{width:1440,height:1000}});for(const [name,pages] of [['real-course.pdf',[1,4,8,16,19,27,28,35]],['pptx-preview.pdf',[1,2,3,4,5]]]){const file=path.join(source,name),before=hash(file);await page.goto('http://127.0.0.1:7189/reader-workbench.html');await page.getByLabel('打开本地 PDF',{exact:true}).setInputFiles(file);await expect(page.locator('.rl-page')).toHaveAttribute('data-ready','true');await page.getByRole('button',{name:'适应整页',exact:true}).click();for(const n of (name==='real-course.pdf'?Array.from({length:35},(_,i)=>i+1):pages)){await page.getByLabel('跳转页码',{exact:true}).fill(String(n));await page.getByLabel('跳转页码',{exact:true}).press('Enter');await expect(page.locator('.rl-page')).toHaveAttribute('data-page',String(n));await expect(page.locator('.rl-page')).toHaveAttribute('data-ready','true');if(pages.includes(n))await page.locator('.rl-page canvas').screenshot({path:path.join(dir,channel+'-'+name+'-'+n+'.png')})}expect(hash(file)).toBe(before);results.push({channel,version:browser.version(),file:name,pages,sha256:before,unchanged:true})}}finally{await browser.close()}}writeFileSync(path.join(dir,'fidelity.json'),JSON.stringify(results,null,2))
+
+

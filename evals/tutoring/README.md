@@ -19,9 +19,9 @@ SQL 夹具明确重复报关和重复免税名单的语义，避免将普通 JOI
 
 `heldout` 中已运行的连续无进展案例如今用于修复回归，不再称未参与调试。尚未运行的直接讲解、异议与小检查场景仍须单独验收。小检查错配需看实际生成的问题后再编写错配回答，不能把固定回复硬套到不同问题上。迁移题的评审答案不得出现在学生侧输入；完整方案及原始记录表见 [真人试用包](trial-protocol.md)。三考点是同一课程内的不同技能，不能称跨学科验证。
 
-本轮实际结果与未通过项见 [三考点评审](review-2026-11-09-three-topics.md)。不能将夹具已准备等同于全部场景已经跑完。
+本轮实际结果与未通过项见 [三考点评审](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-three-topics.md)。不能将夹具已准备等同于全部场景已经跑完。
 
-新增 `*.fresh-boundaries.json`（连续无进展、自主选择、来源边界与暂停）及 `*.unseen-content.json`（完整讲解后停止、按内容标记来源查证帮助）。先冻结自然措辞，再运行；一旦依据失败改提示词，该批次即成为修复样本。各考点使用相同措辞，不代表覆盖了三门课程。最新结果见 [帮助边界评审](review-2026-11-09-help-boundaries.md)。
+新增 `*.fresh-boundaries.json`（连续无进展、自主选择、来源边界与暂停）及 `*.unseen-content.json`（完整讲解后停止、按内容标记来源查证帮助）。先冻结自然措辞，再运行；一旦依据失败改提示词，该批次即成为修复样本。各考点使用相同措辞，不代表覆盖了三门课程。最新结果见 [帮助边界评审](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-help-boundaries.md)。
 
 这是开发验收工具，不是学习收益评测。固定学生消息用于检查来源、条件遗漏、小检查反馈、换讲法及暂停；不由模型模拟学生或自行打分。条件不同的后续消息必须单独检查是否仍适配，不能只比较动作名称或统计“正确率”。
 
@@ -70,9 +70,9 @@ shutil.copytree('data/uploads', target / 'uploads')
 
 ## 实际小检查与第二科目
 
-最新进展见[跨轮次证据与复测建议](review-2026-11-09-cross-session.md)：课程级只读有效证据列表、规划器摘要、旧题去重及真实固定切面；隔天效果尚无真人证据。
+最新进展见[跨轮次证据与复测建议](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-cross-session.md)：课程级只读有效证据列表、规划器摘要、旧题去重及真实固定切面；隔天效果尚无真人证据。
 
-正式评分结果见[信号评分与纠错](review-2026-11-09-signals-grading.md)。评分重放必须使用新建隔离目录、真实原件及明确付费开关，例如在PowerShell中运行：
+正式评分结果见[信号评分与纠错](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-signals-grading.md)。评分重放必须使用新建隔离目录、真实原件及明确付费开关，例如在PowerShell中运行：
 
 ```powershell
 New-Item -ItemType Directory data/acceptance-grading-new
@@ -82,6 +82,6 @@ New-Item -ItemType File data/acceptance-grading-new/ISOLATED_ACCEPTANCE
 
 拒绝复用已有数据库及覆盖原报告。该命令最多对每个样本做一次正式评分；仅case显式提供review_reason时再复核。当前六样本没有review_reason，本轮复核与纠错是另行按实际结果开展，保存在私有证据。夹具只在隔离库提升为开发核查的validated，不改变仓库draft或正式题库，不证明自动校题质量；每次运行有API费用。原件不随仓库分发，请填写实际拥有且hash一致的路径。
 
-后续[PDF整页视觉回退评审](review-2026-11-09-pdf-render.md)记录矢量/乱码页渲染、AES依赖修复及真实视觉转录的成功与保存失败边界。
+后续[PDF整页视觉回退评审](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-pdf-render.md)记录矢量/乱码页渲染、AES依赖修复及真实视觉转录的成功与保存失败边界。
 
-最新结果见[小检查和信号评审](review-2026-11-09-checks-and-signals.md)。actual-checks.json是读取实际问题后人工写错配/改正输入的已发生记录，不是给任意新问题硬套的用例。conceptual-help文件检查完整自然语言示范→局部解释的当轮帮助。signals-step-impulse夹具基于用户授权本地原件，hash/页码可追溯；原件不分发，来源与夹具仍须核查，不能冒充整科端到端支持。运行 `scripts/check_tutoring_signals.py` 可独立做有限数值核查，无模型调用。
+最新结果见[小检查和信号评审](../../docs/archive/20261124/模型评测历史/tutoring/review-2026-11-09-checks-and-signals.md)。actual-checks.json是读取实际问题后人工写错配/改正输入的已发生记录，不是给任意新问题硬套的用例。conceptual-help文件检查完整自然语言示范→局部解释的当轮帮助。signals-step-impulse夹具基于用户授权本地原件，hash/页码可追溯；原件不分发，来源与夹具仍须核查，不能冒充整科端到端支持。运行 `scripts/check_tutoring_signals.py` 可独立做有限数值核查，无模型调用。

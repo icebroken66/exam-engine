@@ -1,0 +1,416 @@
+{
+  "development_passed": false,
+  "reviewer": null,
+  "review_date": null,
+  "status": "not_run",
+  "outputs": [
+    {
+      "case": "D01",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D02",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D03",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D04",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D05",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D06",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D07",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D08",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D09",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D10",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D11",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "D12",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H01",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H01",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H02",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H02",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H03",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H03",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H04",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H04",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H05",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H05",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H06",
+      "repetition": 1,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    },
+    {
+      "case": "H06",
+      "repetition": 2,
+      "scores": {
+        "facts_symbols": null,
+        "responds_to_blocker": null,
+        "evidence_support": null,
+        "scope": null,
+        "correction_uncertainty": null,
+        "reasons": [],
+        "hard_failure": null
+      },
+      "original_output": null,
+      "source_location": null,
+      "citation_links_checked": null,
+      "notes": null
+    }
+  ]
+}

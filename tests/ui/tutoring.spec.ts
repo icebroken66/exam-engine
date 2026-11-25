@@ -38,7 +38,8 @@ r_2(t)=\delta(t)-a e^{-at}u(t).
 \]
 代码示例：` + ' `\\(x\\)`', action: 'explain', help_level: 'worked_answer', reason: '完整求导', observation: '仅演示', uncertainty: '', evidence_ids: [] } })
   await serve(page, state)
-  await page.goto(`/#/courses/${course.id}/learn`)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   await expect(page.locator('.tutoring-reply .katex')).toHaveCount(2)
   await expect(page.locator('.tutoring-reply .katex-display')).toHaveCount(1)
   await expect(page.locator('.tutoring-reply .katex-error')).toHaveCount(0)
@@ -50,7 +51,8 @@ r_2(t)=\delta(t)-a e^{-at}u(t).
 
 test('带学交流与正式提交分开，刷新恢复对话及送达记录', async ({ page }, testInfo) => {
   const state = fixture(); await serve(page, state)
-  await page.goto(`/#/courses/${course.id}/learn`)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   const chat = page.getByRole('textbox', { name: '和导师交流当前题' })
   await chat.fill('我不是不懂概念，请解释投影后还剩哪些列。')
   await page.getByRole('button', { name: '发送带学消息（不提交答案）', exact: true }).click()
@@ -58,6 +60,7 @@ test('带学交流与正式提交分开，刷新恢复对话及送达记录', as
   expect(state.formal).toBe(0); expect(state.current.stage).toBe('diagnosing')
   await expect.poll(() => state.receipts).toBe(1)
   await page.reload()
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   await expect(page.locator('.tutoring-reply')).toContainText('无法再按仓库筛选')
   expect(state.writes).toBe(1)
   for (const width of [1440, 768, 390, 320]) { await page.setViewportSize({ width, height: 900 }); expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width) }
@@ -66,7 +69,8 @@ test('带学交流与正式提交分开，刷新恢复对话及送达记录', as
 
 test('保存后断线只重读，不重发，读取失败保留草稿', async ({ page }) => {
   const state = fixture(); await serve(page, state, true)
-  await page.goto(`/#/courses/${course.id}/learn`)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   const send = page.getByRole('button', { name: '发送带学消息（不提交答案）', exact: true })
   await page.getByRole('textbox', { name: '和导师交流当前题' }).fill('第二步没懂')
   await send.click()
@@ -81,7 +85,8 @@ test('保存后断线只重读，不重发，读取失败保留草稿', async ({
 
 test('独立重测明确选择转带学，生成中的回复锁住正式提交', async ({ page }) => {
   const state = fixture(true); await serve(page, state)
-  await page.goto(`/#/courses/${course.id}/learn`)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   await page.getByRole('textbox', { name: '和导师交流当前题' }).fill('请帮忙')
   const send = page.getByRole('button', { name: '发送带学消息（不提交答案）', exact: true })
   await expect(send).toBeDisabled()
@@ -106,15 +111,16 @@ test('较早交流折叠，窄屏与键盘可往返当前题、最新交流和�
   state.current.current_task.help_exposures = 10
   await serve(page, state)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto(`/#/courses/${course.id}/learn`)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   const chat = page.getByRole('textbox', { name: '和导师交流当前题' })
   await expect(chat).toBeEnabled()
   expect((await page.locator('.task-heading').boundingBox())!.height).toBeLessThan(160)
   await expect(page.locator('.tutoring-older')).not.toHaveAttribute('open')
   await expect(page.locator('.tutoring-reply:visible')).toHaveCount(1)
-  await page.getByRole('button', { name: '带学交流', exact: true }).click()
+  await page.getByRole('button', { name: '当前题带学', exact: true }).click()
   await expect(chat).toBeFocused()
-  await page.getByRole('button', { name: '最新交流', exact: true }).click()
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click();await page.locator('#latest-tutoring').focus()
   await expect(page.locator('#latest-tutoring')).toBeFocused()
   await page.locator('#latest-tutoring summary').click()
   await expect(page.locator('#latest-tutoring a')).toHaveAttribute('href', /#page=52$/)
@@ -122,12 +128,13 @@ test('较早交流折叠，窄屏与键盘可往返当前题、最新交流和�
   const formal = page.getByRole('textbox', { name: '你的正式作答（已接受帮助）' })
   await expect(formal).toBeFocused()
   await formal.fill('保留我的正式作答草稿')
-  await page.getByRole('button', { name: '带学交流', exact: true }).click()
+  await page.getByRole('button', { name: '当前题带学', exact: true }).click()
   await chat.fill('这一步我仍不明白')
   await chat.press('Control+Enter')
   await expect.poll(() => state.writes).toBe(1)
   expect(state.formal).toBe(0)
   await page.reload()
+  await page.getByRole('button',{name:'当前题带学',exact:true}).click()
   await expect(formal).toHaveValue('保留我的正式作答草稿')
   await expect(page.locator('.tutoring-reply:visible')).toHaveCount(1)
   await page.getByRole('button', { name: '当前题', exact: true }).click()
@@ -135,8 +142,29 @@ test('较早交流折叠，窄屏与键盘可往返当前题、最新交流和�
   for (const width of [390, 620, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     if (width <= 640) expect((await page.locator('.task-heading').boundingBox())!.height).toBeLessThan(160)
-    await page.getByRole('button', { name: '最新交流', exact: true }).click()
+    await page.getByRole('button',{name:'当前题带学',exact:true}).click();await page.locator('#latest-tutoring').focus()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
     await page.screenshot({ path: testInfo.outputPath(`compact-tutoring-${width}.png`), fullPage: true })
   }
+})
+
+
+test('题目选项显式关联包含当前选择，未提交不产生帮助，带学只在统一侧栏',async({page})=>{
+ const state=fixture(true);state.current.current_task.question_type='multiple_choice';state.current.current_task.options=['A. 先选择','B. 先投影'];await serve(page,state);await page.goto('/?assistantDebug=1#/courses/'+course.id+'/learn');await page.getByRole('checkbox',{name:'B. 先投影',exact:true}).check();await page.getByRole('button',{name:'将本题关联到统一助手',exact:true}).click();await expect(page.getByLabel('下次记录附带的上下文')).toContainText('先选择还是先投影');await expect(page.getByLabel('下次记录附带的上下文')).toContainText('当前选择／作答草稿（未提交、未判分）：B. 先投影');expect(state.writes).toBe(0);expect(state.formal).toBe(0);await expect(page.locator('.learning-task-card .tutoring-panel')).toHaveCount(0);await page.getByRole('button',{name:'带学对话',exact:true}).click();await expect(page.locator('.app-unified-assistant .tutoring-panel')).toBeVisible();await expect(page.getByRole('button',{name:'发送带学消息（不提交答案）',exact:true})).toBeDisabled();await page.getByRole('button',{name:'问题记录与上下文',exact:true}).click();await expect(page.getByLabel('下次记录附带的上下文')).toContainText('B. 先投影');expect(state.retestHelp).toBe(false)
+})
+
+
+test('normal learning view exposes one assistant without old tutoring modes',async({page})=>{
+ const state=fixture(true);await serve(page,state)
+ await page.goto('/#/courses/'+course.id+'/learn')
+ await page.getByRole('button',{name:'AI 学习助手',exact:true}).click()
+ await expect(page.getByRole('button',{name:'带学对话',exact:true})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'问题记录与上下文',exact:true})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'启用任务主题与上下文',exact:true})).toHaveCount(0)
+ await expect(page.locator('.tutoring-panel')).toHaveCount(0)
+ const assistant=page.getByRole('region',{name:'AI 学习助手',exact:true})
+ await expect(assistant).toHaveCount(1);await expect(assistant).toBeVisible()
+ await expect(assistant.getByRole('textbox',{name:'向助手提问',exact:true})).toBeEditable()
+ await expect(assistant.getByRole('button',{name:'发送',exact:true})).toBeDisabled()
+ expect(state.writes).toBe(0);expect(state.formal).toBe(0);expect(state.retestHelp).toBe(false)
 })

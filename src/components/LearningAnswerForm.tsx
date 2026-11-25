@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { ArrowRight, CheckCircle2, Lightbulb, LoaderCircle, RotateCcw, XCircle } from 'lucide-react'
+import { ArrowRight, CheckCircle2, LoaderCircle, RotateCcw, XCircle } from 'lucide-react'
 import type { LearningSession, LearningTask } from '../lib/clients/learning'
 import { StudyContent } from './StudyContent'
 import { GradeReviewControls } from './GradeReviewControls'
@@ -81,11 +81,7 @@ export function LearningAnswerForm({ session, task, answer, setAnswer, submit, n
                     {busy === 'answer' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
                     {busy === 'answer' ? '正在保存并判分…' : attempt?.verdict === 'ungraded' ? '补充后重新提交' : task.help_exposures > 0 ? '提交正式作答（已接受帮助）' : '提交独立作答'}
                   </button>
-                  {task.kind !== 'retest' && (
-                    <button className="text-action" type="button" onClick={() => { const input = document.querySelector<HTMLTextAreaElement>('.tutoring-panel textarea'); input?.scrollIntoView({ behavior: 'smooth', block: 'center' }); input?.focus({ preventScroll: true }) }} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
-                      <Lightbulb size={16} /> 围绕当前题求助
-                    </button>
-                  )}
+
                 </>
               )}
               {canNext && session.stage !== 'blocked' && (

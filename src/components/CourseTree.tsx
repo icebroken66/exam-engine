@@ -1,0 +1,23 @@
+import {useEffect,useRef,useState} from 'react'
+import type {Course,Source} from '../lib/api'
+import {listSources} from '../lib/api'
+import {TreeView,TreeViewItem} from '../reader/boardui/tree-view'
+import {isPdf} from '../lib/materials'
+import {readingRoute} from '../lib/workspaceRoute'
+type Node={items:Source[];loading:boolean;error:string}
+export function CourseTree({courses,courseId,sourceId,onNavigate}:{courses:Course[];courseId:string|null;sourceId:string|null;onNavigate:(hash:string)=>void}){
+ const [expanded,setExpanded]=useState<Set<string>>(()=>{try{const value=JSON.parse(localStorage.getItem('exam-engine:tree:v1')||'null');return new Set(value?.schema===1&&Array.isArray(value.expanded)?value.expanded.filter((v:unknown)=>typeof v==='string'):[])}catch{return new Set()}})
+ const [nodes,setNodes]=useState<Record<string,Node>>({})
+ const controllers=useRef(new Map<string,AbortController>())
+ const nodesRef=useRef(nodes);nodesRef.current=nodes
+ async function load(id:string){controllers.current.get(id)?.abort();const controller=new AbortController();controllers.current.set(id,controller);setNodes(n=>({...n,[id]:{items:n[id]?.items||[],loading:true,error:''}}));try{const items=await listSources(id,AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]));if(!controller.signal.aborted)setNodes(n=>({...n,[id]:{items,loading:false,error:''}}))}catch{if(!controller.signal.aborted)setNodes(n=>({...n,[id]:{items:n[id]?.items||[],loading:false,error:'资料读取失败，按 Enter 重试'}}))}finally{if(controllers.current.get(id)===controller)controllers.current.delete(id)}}
+ useEffect(()=>{for(const id of expanded)if(!nodesRef.current[id])void load(id);try{localStorage.setItem('exam-engine:tree:v1',JSON.stringify({schema:1,expanded:[...expanded]}))}catch{}},[expanded])
+ useEffect(()=>{if(courseId)setExpanded(current=>new Set([...current,courseId]))},[courseId,sourceId])
+ useEffect(()=>{const refresh=()=>{for(const id of expanded)void load(id)};const changed=(e:Event)=>{const id=(e as CustomEvent).detail;if(typeof id==='string'&&expanded.has(id))void load(id)};window.addEventListener('focus',refresh);window.addEventListener('course:sources-changed',changed);return()=>{window.removeEventListener('focus',refresh);window.removeEventListener('course:sources-changed',changed)}},[expanded])
+ useEffect(()=>()=>{for(const c of controllers.current.values())c.abort()},[])
+ function action(key:string){if(key.startsWith('status:')){void load(key.slice(7));return}if(key.startsWith('file:')){const [,cid,sid]=key.split(':');const item=nodes[cid]?.items.find(s=>s.id===sid);if(item&&isPdf(item))onNavigate(readingRoute(cid,sid));else if(item){onNavigate('#/courses/'+encodeURIComponent(cid)+'/materials');window.dispatchEvent(new CustomEvent('course:unsupported',{detail:{name:item.original_name,id:item.id}}))}return}onNavigate('#/courses/'+encodeURIComponent(key)+'/overview')}
+ return <div onClickCapture={e=>{if((e.target as Element).closest('button'))return;const row=(e.target as Element).closest<HTMLElement>('[role=row][data-key]');if(row?.dataset.key){e.stopPropagation();action(row.dataset.key)}}} onKeyDownCapture={e=>{if(e.nativeEvent.isComposing)return;if(e.key==='Enter'&&!(e.target as Element).closest('button')){const row=(e.target as Element).closest<HTMLElement>('[role=row][data-key]');if(row?.dataset.key){e.preventDefault();e.stopPropagation();action(row.dataset.key)}}}}><TreeView className="course-tree" aria-label="课程与资料" selectedKeys={sourceId&&courseId?['file:'+courseId+':'+sourceId]:courseId?[courseId]:[]} expandedKeys={expanded} onExpandedChange={keys=>setExpanded(new Set([...keys].map(String)))}>{courses.map(course=><TreeViewItem id={course.id} key={course.id} label={course.name} trailingContent={courseId===course.id?'当前课程':undefined}>
+  {(nodes[course.id]?.items||[]).map(source=><TreeViewItem key={source.id} id={'file:'+course.id+':'+source.id} label={source.original_name+(nodes[course.id].items.filter(s=>s.original_name===source.original_name).length>1?' · '+(source.relative_path||source.id.slice(0,8)):'')} textValue={source.original_name+' '+source.relative_path} trailingContent={<span title={(source.relative_path||source.original_name)+' · '+source.extension+' · '+(isPdf(source)?'打开时校验':'下载原件')}>{source.extension.replace('.','').toUpperCase()}</span>}/>)}
+  {(!nodes[course.id]||nodes[course.id].loading||nodes[course.id].error||nodes[course.id].items.length===0)&&<TreeViewItem id={'status:'+course.id} label={nodes[course.id]?.error|| (nodes[course.id]?.loading||!nodes[course.id]?'正在读取资料…':'暂无资料；Enter 刷新')} />}
+ </TreeViewItem>)}</TreeView></div>
+}

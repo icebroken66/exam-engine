@@ -1,0 +1,9 @@
+import {emptySession,parseSession} from './session'
+import type {AssistantContext,AssistantSession} from './session'
+export class AssistantRequestError extends Error{status:number;constructor(status:number,message:string){super(message);this.status=status}}
+export const assistantUrl=(courseId:string)=>'/api/courses/'+encodeURIComponent(courseId)+'/assistant'
+export function readRawAssistant(courseId:string){return request<unknown>(assistantUrl(courseId))}
+async function request<T>(url:string,init?:RequestInit):Promise<T>{const r=await fetch(url,{...init,signal:AbortSignal.timeout(20000)});if(!r.ok){const body=await r.json().catch(()=>null);throw new AssistantRequestError(r.status,typeof body?.detail==='string'?body.detail:'服务端请求失败（'+r.status+'）')}return r.json()}
+export async function readAssistant(courseId:string){const r=await request<{revision:number;snapshot:unknown;readOnly:boolean}>(assistantUrl(courseId));if(!Number.isSafeInteger(r.revision)||r.revision<0)throw new Error('服务端修订号无效');return{state:{...(r.snapshot===null?emptySession(courseId):parseSession(JSON.stringify(r.snapshot),courseId)),revision:r.revision},readOnly:r.readOnly}}
+export async function saveAssistant(state:AssistantSession){const r=await request<{revision:number}>(assistantUrl(state.courseId),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:state.revision,snapshot:state})});if(!Number.isSafeInteger(r.revision)||r.revision<state.revision)throw new Error('服务端保存回执无效');return r.revision}
+export function preflightAssistant(courseId:string,message:string,context:AssistantContext|null){return request<{status:string;canSend:false;modelCalled:false;message:string}>(assistantUrl(courseId)+'/preflight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,context})})}

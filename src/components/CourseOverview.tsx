@@ -1,0 +1,11 @@
+import {useEffect,useState} from 'react'
+import type {Course,LearningSession} from '../lib/api'
+import {ReadingResume} from './ReadingResume'
+import type {CourseSourcesState} from '../lib/useCourseSources'
+import {Button,ButtonLink} from '../reader/boardui/button'
+export function CourseOverview({course,state}:{course:Course;state:CourseSourcesState}){
+ const [session,setSession]=useState<LearningSession|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[retry,setRetry]=useState(0)
+ useEffect(()=>{const controller=new AbortController();setLoading(true);setSession(null);setError('');void fetch('/api/courses/'+encodeURIComponent(course.id)+'/learning-sessions/current',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}).then(async r=>{if(!r.ok)throw new Error();return r.json()}).then(value=>{if(!controller.signal.aborted){if(value&&value.course_id!==course.id)throw new Error();setSession(value);setLoading(false)}}).catch(()=>{if(!controller.signal.aborted){setError('练习进度暂时无法读取；可进入练习页重试。');setLoading(false)}});return()=>controller.abort()},[course.id,retry])
+ const base='#/courses/'+encodeURIComponent(course.id)
+ return <section className="course-overview" aria-label="课程总览"><h2>课程总览</h2><p>阅读资料、继续练习，或核对课程题目。</p><ReadingResume courseId={course.id} sources={state.sources} updated={state.lastUpdated}/><div className="overview-actions"><section><h3>练习题目</h3>{loading?<p role="status">正在读取练习进度…</p>:error?<p role="alert">{error} <Button size="small" variant="ghost" onClick={()=>setRetry(n=>n+1)}>重读练习进度</Button></p>:<p>{session&&session.stage!=='completed'?'已有未完成练习，可从上次进度继续。':'尚无进行中的练习。'}</p>}<ButtonLink href={base+'/learn'+(session&&session.stage!=='completed'?'?session='+encodeURIComponent(session.id):'')}>{session&&session.stage!=='completed'?'继续练习':'开始练习'}</ButtonLink></section><section><h3>课程资料</h3><p>{state.loading?'正在读取资料…':state.error?'资料清单暂时无法完整刷新。':'查看、添加和管理课程资料。'}</p><ButtonLink variant="secondary" href={base+'/materials'}>管理课程资料</ButtonLink></section><section><h3>题目校准</h3><p>核对题干与答案，区别于正式练习作答。</p><ButtonLink variant="secondary" href={base+'/questions'}>题目校准／管理</ButtonLink></section></div><div className="overview-links"><a href={base+'/saved'}>已保存讲解</a><a href={base+'/history'}>学习记录</a><a href={base+'/analytics'}>考点概览</a></div></section>
+}

@@ -180,7 +180,7 @@ def next_learning_action(
     gateway: ModelGateway = Depends(get_model_gateway),
 ) -> dict:
     try:
-        return advance_session(db, session_id, gateway, payload.expected_task_id if payload else None, payload.expected_progress_version if payload else None)
+        return advance_session(db, session_id, gateway, payload.expected_task_id if payload else None, payload.expected_progress_version if payload else None, payload.independent_check if payload else False)
     except LearningSessionError as error:
         raise HTTPException(status_code=error.status_code, detail=error.message) from error
 

@@ -1,0 +1,29 @@
+{
+  "version": "v10-eval-1",
+  "approval": "confirmed",
+  "provider": "openai-compatible",
+  "model": "gpt-6-sol",
+  "provider_attempt_limit": 36,
+  "total_token_hard_limit": 200000,
+  "input_token_upper_bound_per_call": 12000,
+  "output_tokens_per_call": 1500,
+  "provider_wait_seconds": 60,
+  "price_status": "unknown",
+  "network": "仅现有配置供应商，不搜索或访问材料内网址",
+  "materials": "evals/assistant-v10公开自制材料、同目录题目及私有字段对抗夹具；不读取个人课程",
+  "development_cases": 12,
+  "heldout_cases": 6,
+  "heldout_repetitions": 2,
+  "stop_conditions": [
+    "用户要求停止",
+    "达到调用或token上限",
+    "执行未知",
+    "任何私有泄露／虚构来源／关键知识错误"
+  ],
+  "status": "human_review_required_with_quality_findings",
+  "authorization": "用户本轮明确：允许测试",
+  "actual_provider_attempts": 29,
+  "actual_tokens": 51651,
+  "heldout_status": "not_run",
+  "remaining_attempts": 7
+}

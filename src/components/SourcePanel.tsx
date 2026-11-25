@@ -7,6 +7,11 @@ import { formatFileSize, formatProcessingDuration, sourceProcessingLabel, source
 import { WebSourcePanel } from './WebSourcePanel'
 import { SourceRemovalDialog } from './SourceRemovalDialog'
 import { SourceProgress } from './SourceProgress'
+import { ReadingResume } from './ReadingResume'
+import { filterMaterials, isPdf, materialsPreference, readerHref } from '../lib/materials'
+import { Button, ButtonLink } from '../reader/boardui/button'
+import { Input } from '../reader/boardui/input'
+import { cx } from '../reader/boardui/cx'
 import type { CourseSourcesState } from '../lib/useCourseSources'
 
 interface SourcePanelProps {
@@ -25,7 +30,11 @@ const materialLabels: Record<MaterialType, string> = {
 
 export function SourcePanel({ courseId, state }: SourcePanelProps) {
   const { sources, completeness, loading, refresh } = state
+  const [preference, setPreference] = useState(() => materialsPreference(courseId))
+  useEffect(() => { try { sessionStorage.setItem('materials-view:' + courseId, JSON.stringify(preference)) } catch { /* Optional UI preference. */ } }, [courseId, preference])
+  const filtered = filterMaterials(sources, preference.query, preference.filter)
   const [files, setFiles] = useState<File[]>([])
+  const [uploaded, setUploaded] = useState<Source[]>([])
   const [uploadFailures, setUploadFailures] = useState<SourceBatchFailure[]>([])
   const [rights, setRights] = useState(false)
   const [working, setWorking] = useState(false)
@@ -44,7 +53,7 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
 
   useEffect(() => {
     folderInputRef.current?.setAttribute('webkitdirectory', '')
-  }, [])
+  })
 
   function selectFiles(selected: FileList | File[]) {
     setFiles(Array.from(selected))
@@ -75,7 +84,7 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
   }
 
   async function submitUpload() {
-    if (files.length === 0 || files.length > 100 || !rights) return
+    if (working || files.length === 0 || files.length > 100 || !rights) return
     setWorking(true)
     setError('')
     setMessage('')
@@ -89,6 +98,7 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
       ].filter(Boolean).join('；')
       setMessage(`${details}。可用文件将自动解析并进入后续学习判断。`)
       setUploadFailures(result.failures)
+      setUploaded(result.results.map(item => item.source))
       const failedNames = new Set(result.failures.map(failure => failure.filename))
       const remaining = files.filter(file => failedNames.has(file.webkitRelativePath || file.name) || failedNames.has(file.name))
       if (remaining.length) setFiles(remaining)
@@ -156,38 +166,7 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
 
   const evidenceSource = sources.find((source) => source.id === evidenceSourceId)
 
-  return (
-    <div className="source-panel">
-      <div className="section-heading"><span>课程资料清单</span><span>{sources.length} 份资料</span></div>
-      <SourceProgress state={state} />
-
-      {completeness && (
-        <section className="completeness-ledger" aria-label="课程资料完整性">
-          <div className="completeness-heading">
-            <strong>{completeness.total_sources === 0 ? '等待提供课程资料' : completeness.complete ? '资料解析完整' : `${completeness.attention_sources} 份资料需要关注`}</strong>
-            <span>解析完整性 / 非考点覆盖率</span>
-          </div>
-          <dl className="completeness-stats">
-            <div><dt>全部资料</dt><dd>{completeness.total_sources}</dd></div>
-            <div><dt>可用资料</dt><dd>{completeness.ready_sources}</dd></div>
-            <div><dt>原文证据</dt><dd>{completeness.evidence_blocks}</dd></div>
-            <div><dt>待处理</dt><dd>{completeness.attention_sources}</dd></div>
-          </dl>
-          {completeness.issues.length === 0 ? (
-            <p className="completeness-note">{completeness.total_sources === 0 ? '尚未上传资料，上传后可在这里核对解析结果。' : '所有资料均已提取文本，未发现空白章节或页面。'}</p>
-          ) : (
-            <ul className="completeness-issues">
-              {completeness.issues.map((issue) => (
-                <li key={`${issue.source_id}-${issue.code}-${issue.node_id ?? 'source'}`}>
-                  <strong title={issue.source_name}>{issue.source_name}</strong>
-                  <span>{issue.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
+  const uploadComposer = (
       <div className="upload-composer" onDragOver={(event) => event.preventDefault()} onDrop={dropFiles}>
         <input
           ref={inputRef}
@@ -217,7 +196,7 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
             <small>保留资料相对目录</small>
           </button>
         </div>
-        <p className="file-picker-hint">也可把多份文件拖到这里。支持 PDF / Office / 文本 / 图片；每份最大 50 MB，每批最多 100 份。</p>
+        <p className="file-picker-hint">也可把多份文件拖到这里。支持 PDF / Office / 文本 / 图片；每份最大 50 MB，每批最多 100 份。重新上传相同文件可恢复已移除资料与已有记录。</p>
         {files.length > 0 && (
           <>
             <div className="selected-file-summary">
@@ -243,9 +222,18 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
           {working ? <LoaderCircle className="spinning" size={16} /> : <Upload size={16} />}
           {working ? '正在上传并安排整批解析' : files.length > 100 ? '请分批导入，每批最多 100 份' : `批量导入 ${files.length || ''} 份并自动解析`}
         </button>
-      </div>
+      </div>  )
+
+  return (
+    <div className="source-panel">
+      <div className="section-heading"><span>课程资料清单</span><span>{sources.length} 份资料</span></div>
+      <ReadingResume courseId={courseId} sources={sources} updated={state.lastUpdated} />
+      {state.error && <p className="status-reconnect" role="alert">{state.error} <Button size="small" variant="ghost" onClick={() => void refresh()}>刷新资料</Button></p>}
+
+
 
       {message && <p className="source-message" role="status">{message}</p>}
+      {uploaded.length > 0 && <div className="upload-received" role="status">本批资料已接收：{uploaded.map(source => isPdf(source) ? <ButtonLink key={source.id} size="small" href={readerHref(courseId,source.id)}>{'阅读 ' + source.original_name}</ButtonLink> : <a key={source.id} href={'/api/sources/' + source.id + '/file'}>{'下载 ' + source.original_name}</a>)}</div>}
       {uploadFailures.length > 0 && (
         <ul className="upload-failures" aria-label="未导入文件">
           {uploadFailures.map((failure) => <li key={failure.filename}><strong>{failure.filename}</strong>：{failure.message}</li>)}
@@ -253,22 +241,28 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
       )}
       {error && <p className="source-error" role="alert">{error}</p>}
 
-      <WebSourcePanel
-        courseId={courseId}
-        hasAnchor={sources.some((source) => ['ready', 'needs_review'].includes(source.status))}
-        onImported={() => { void refresh() }}
-      />
 
+      {sources.length === 0 && !loading && <details className="material-secondary" open><summary>添加课程资料</summary><p>支持 PDF、DOCX、PPTX、文本和图片。工作台目前阅读 PDF；其他格式可下载原件，PPTX 可人工导出 PDF 再导入。</p>{uploadComposer}
+</details>}
+      {sources.length > 0 && <div className="materials-search" aria-label="查找资料">
+        <Input label="按文件名搜索" placeholder="搜索文件名（不含正文）" value={preference.query} onChange={query => setPreference(p => ({...p, query}))} />
+        <div className="materials-filters" role="group" aria-label="资料筛选">{([['all','全部'],['readable','可阅读'],['processing','需处理']] as const).map(([filter,label]) => <Button key={filter} size="small" variant="ghost" className={cx(preference.filter === filter && 'material-filter-active')} aria-pressed={preference.filter === filter} onClick={() => setPreference(p => ({...p,filter}))}>{label}</Button>)}</div>
+        {(preference.query || preference.filter !== 'all') && <Button size="small" variant="ghost" onClick={() => setPreference({query:'',filter:'all'})}>清除筛选</Button>}
+      </div>}
       <div className="source-list">
         {loading && <p className="source-empty">正在读取资料清单…</p>}
         {!loading && sources.length === 0 && (
           <div className="source-empty"><FileText size={22} /><p>还没有资料。可直接上传课件、真题或笔记，无需先整理或录入题目。</p></div>
         )}
-        {sources.map((source) => (
+        {!loading && sources.length > 0 && filtered.length === 0 && <p className="source-empty" role="status">没有匹配文件名和筛选条件的资料。请清除筛选后重试。</p>}
+        {filtered.map((source) => (
           <article className="source-record" key={source.id}>
             <div className="source-file-icon"><FileText size={19} /></div>
             <div className="source-record-copy">
-              <strong title={source.original_name}>{source.original_name}</strong>
+              {isPdf(source) ? <a className="material-title" href={readerHref(courseId, source.id)} title={source.original_name}>{source.original_name}</a> : <strong title={source.original_name}>{source.original_name}</strong>}
+              <small>{source.extension.replace('.', '').toUpperCase()} · {isPdf(source) ? '可阅读 · 打开时校验' : '当前格式不支持阅读 · 可下载原件'}{source.relative_path ? ' · ' + source.relative_path : ''}</small>
+              {source.status === 'failed' && <small className="source-processing-note">AI 解析失败；PDF 原件仍可尝试阅读。{source.processing_note}</small>}
+              <details className="material-details"><summary>资料详情与处理</summary>
               <small>{source.extension.slice(1).toUpperCase()} · {formatFileSize(source.size_bytes)} · SHA {source.sha256.slice(0, 8)}</small>
               <label className="source-material-type" title={source.material_rationale}>
                 <span>资料类型{source.material_confidence < 0.8 ? '（请核对）' : ''}</span>
@@ -291,9 +285,11 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
               {!['queued', 'running'].includes(source.status) && source.processing_duration_seconds > 0 && (
                 <small className="source-origin">最近处理耗时 {formatProcessingDuration(source.processing_duration_seconds)}</small>
               )}
+              </details>
             </div>
             <span className={`source-state state-${source.status}`}>{sourceStatusLabel(source.status)}</span>
             <div className="source-actions">
+              {isPdf(source)&&<ButtonLink size="small" href={readerHref(courseId, source.id)} aria-label={'阅读 ' + source.original_name}>阅读</ButtonLink>}
               <button type="button" className="remove-source-action" disabled={working || Boolean(actionId)} onClick={() => setRemoving(source)} aria-label={`移除 ${source.original_name}`}><Trash2 size={14} /> 移除</button>
               <a href={`/api/sources/${source.id}/file`} title="下载原件" aria-label={`下载 ${source.original_name}`}><Download size={15} /></a>
               {['ready', 'needs_review', 'needs_transcription_review'].includes(source.status) && (
@@ -310,6 +306,41 @@ export function SourcePanel({ courseId, state }: SourcePanelProps) {
         ))}
       </div>
 
+      {sources.length > 0 && <details className="material-secondary"><summary>添加资料</summary>{uploadComposer}
+</details>}
+      <details className="material-secondary"><summary>解析状态与完整性</summary><SourceProgress state={state} />      {completeness && (
+        <section className="completeness-ledger" aria-label="课程资料完整性">
+          <div className="completeness-heading">
+            <strong>{completeness.total_sources === 0 ? '等待提供课程资料' : completeness.complete ? '资料解析完整' : `${completeness.attention_sources} 份资料需要关注`}</strong>
+            <span>解析完整性 / 非考点覆盖率</span>
+          </div>
+          <dl className="completeness-stats">
+            <div><dt>全部资料</dt><dd>{completeness.total_sources}</dd></div>
+            <div><dt>可用资料</dt><dd>{completeness.ready_sources}</dd></div>
+            <div><dt>原文证据</dt><dd>{completeness.evidence_blocks}</dd></div>
+            <div><dt>待处理</dt><dd>{completeness.attention_sources}</dd></div>
+          </dl>
+          {completeness.issues.length === 0 ? (
+            <p className="completeness-note">{completeness.total_sources === 0 ? '尚未上传资料，上传后可在这里核对解析结果。' : '所有资料均已提取文本，未发现空白章节或页面。'}</p>
+          ) : (
+            <ul className="completeness-issues">
+              {completeness.issues.map((issue) => (
+                <li key={`${issue.source_id}-${issue.code}-${issue.node_id ?? 'source'}`}>
+                  <strong title={issue.source_name}>{issue.source_name}</strong>
+                  <span>{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+</details>
+      <details className="material-secondary"><summary>网络补全资料</summary>      <WebSourcePanel
+        courseId={courseId}
+        hasAnchor={sources.some((source) => ['ready', 'needs_review'].includes(source.status))}
+        onImported={() => { void refresh() }}
+      />
+</details>
       {removing && <SourceRemovalDialog source={removing} onClose={() => setRemoving(null)} onRemoved={() => {
         if (evidenceSourceId === removing.id) { setEvidenceSourceId(null); setEvidence([]) }
         setMessage(`《${removing.original_name}》已从课程移除，历史记录与原件保留。`)

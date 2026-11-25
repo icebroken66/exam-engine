@@ -1,0 +1,18 @@
+{
+  "version": "m4-public-20261124-1",
+  "approval": "confirmed",
+  "provider": "openai-compatible",
+  "model": "gpt-6-sol",
+  "provider_attempt_limit": 16,
+  "total_token_hard_limit": 96000,
+  "input_token_upper_bound_per_call": 12000,
+  "output_tokens_per_call": 6000,
+  "provider_wait_seconds": 60,
+  "price_status": "unknown",
+  "network": "仅已配置 OpenAI 兼容端点；不搜索或访问材料内网址",
+  "materials": "公开合成操作系统 PDF；隔离副本；不读取个人资料",
+  "course": "公开操作系统隔离夹具",
+  "topics": ["互斥", "同步"],
+  "stop_conditions": ["用户要求停止", "达到调用或token上限", "执行未知", "私有泄露", "虚构来源", "关键知识错误"],
+  "status": "preflight_only"
+}

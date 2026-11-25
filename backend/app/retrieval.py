@@ -47,13 +47,13 @@ def search_course_evidence(
     course_id: str,
     question: str,
     limit: int = 3,
-    *, focus: str = "",
+    *, focus: str = "", source_extensions: tuple[str, ...] | None = None,
 ) -> list[RetrievedEvidence]:
     terms = query_terms(question)
     focus_terms = query_terms(focus)
     if not terms:
         return []
-    rows = db.execute(
+    statement = (
         select(EvidenceBlock, Source, DocumentNode.title)
         .join(Source, EvidenceBlock.source_id == Source.id)
         .join(DocumentNode, EvidenceBlock.node_id == DocumentNode.id)
@@ -61,7 +61,10 @@ def search_course_evidence(
             Source.course_id == course_id, Source.removed_at.is_(None),
             Source.status.in_([ParseStatus.READY.value, ParseStatus.NEEDS_REVIEW.value]),
         )
-    ).all()
+    )
+    if source_extensions is not None:
+        statement = statement.where(Source.extension.in_(source_extensions))
+    rows = db.execute(statement).all()
     ranked: list[RetrievedEvidence] = []
     for block, source, node_title in rows:
         searchable = f"{node_title}\n{block.text}".casefold()

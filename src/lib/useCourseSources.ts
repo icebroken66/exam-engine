@@ -53,6 +53,7 @@ export function useCourseSources(courseId: string, onChanged: () => void): Cours
           setSources(currentSources); setLastUpdated(Date.now())
           const next = inputSignature(currentSources)
           if (signature !== null && next !== signature) changedRef.current()
+          if(signature!==next)window.dispatchEvent(new CustomEvent('course:sources-changed',{detail:courseId}))
           signature = next
         } else errors.push('资料状态连接中断，已保留上次结果')
         if (report.status === 'fulfilled') setCompleteness(report.value)

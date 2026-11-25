@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import threading
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, Callable
 
 import httpx
 from pydantic import BaseModel
@@ -86,7 +86,12 @@ class MockProvider:
     def complete(self, system_prompt: str, user_prompt: str, max_tokens: int) -> ProviderReply:
         evidence = user_prompt.split("<evidence>", 1)[-1].split("</evidence>", 1)[0].strip()
         excerpts = [part.strip() for part in evidence.replace("\r", "\n").split("\n") if part.strip()]
-        if '"student_message"' in user_prompt and '"context_limits"' in user_prompt:
+        if '"assistant_v10": true' in user_prompt:
+            payload=json.loads(user_prompt.split('<output_json_schema>',1)[0].strip())
+            text='MOCK 流程示例：真实回答质量尚未验证。'
+            selected=[item for item in payload['evidence'] if item.get('provenance') not in {'user_provided_text'}][:1]
+            content=json.dumps({'reply':text,'claims':[{'text':text,'kind':'evidence' if selected else 'model_explanation','evidence_ids':[selected[0]['evidence_id']] if selected else [],'quote':selected[0]['text'] if selected else ''}]},ensure_ascii=False)
+        elif '"student_message"' in user_prompt and '"context_limits"' in user_prompt:
             payload = json.loads(user_prompt.split("<output_json_schema>", 1)[0].strip())
             content = json.dumps({
                 "message": "MOCK 流程示例：请描述卡住的具体步骤；该回复不用于真实教学效果判断。",
@@ -396,6 +401,7 @@ class OpenAIProvider:
         self.model = model
         self.transport = transport
         self.request_attempts = 2
+        self.allow_connection_fallback = True
 
     @staticmethod
     def _parse_response(response: httpx.Response) -> ProviderReply:
@@ -457,6 +463,8 @@ class OpenAIProvider:
                             json=request_payload,
                         )
                 except httpx.ConnectError:
+                    if not self.allow_connection_fallback:
+                        raise
                     return self._complete_with_node(request_payload)
                 return self._parse_response(response)
             except (httpx.TimeoutException, httpx.RequestError) as error:
@@ -505,6 +513,7 @@ class OpenAIProvider:
 
 
 class ModelGateway:
+    _shared_budget_lock = threading.Lock()
     def __init__(
         self,
         provider: ModelProvider,
@@ -518,7 +527,7 @@ class ModelGateway:
         self.daily_token_budget = daily_token_budget
         self.input_usd_per_million = input_usd_per_million
         self.output_usd_per_million = output_usd_per_million
-        self._budget_lock = threading.Lock()
+        self._budget_lock = self._shared_budget_lock
 
     @classmethod
     def from_env(cls) -> "ModelGateway":
@@ -580,12 +589,13 @@ class ModelGateway:
         max_tokens: int = 900,
         images: list[VisionImage] | None = None,
         single_attempt: bool = False,
+        before_provider: Callable[[str], None] | None = None,
     ) -> tuple[OutputT, UsageRecord]:
         for attempt in range(2):
             try:
                 return self._generate_json_once(
                     db, course_id, purpose, system_prompt, user_prompt,
-                    output_type, max_tokens, images, single_attempt,
+                    output_type, max_tokens, images, single_attempt, before_provider,
                 )
             except ModelError as error:
                 # Retry malformed JSON once; schema errors and exhausted transport
@@ -610,6 +620,7 @@ class ModelGateway:
         max_tokens: int = 900,
         images: list[VisionImage] | None = None,
         single_attempt: bool = False,
+        before_provider: Callable[[str], None] | None = None,
     ) -> tuple[OutputT, UsageRecord]:
         schema = json.dumps(output_type.model_json_schema(), ensure_ascii=False)
         user_prompt = (
@@ -618,6 +629,8 @@ class ModelGateway:
         )
         image_estimate = sum(len(image.data) for image in images or []) // 3
         estimated_prompt = max(1, (len(system_prompt) + len(user_prompt)) // 4 + image_estimate)
+        if purpose.startswith('assistant_v10:'):
+            estimated_prompt = len((system_prompt + user_prompt).encode('utf-8'))
         reserved = estimated_prompt + max_tokens
         day_start = datetime.combine(datetime.now(timezone.utc).date(), time.min)
         with self._budget_lock:
@@ -644,7 +657,12 @@ class ModelGateway:
         if single_attempt and isinstance(provider, OpenAIProvider):
             provider = copy(provider)
             provider.request_attempts = 1
+            provider.allow_connection_fallback = False
+        provider_started = False
         try:
+            if before_provider is not None:
+                before_provider(record.id)
+            provider_started = True
             reply = (
                 provider.complete_with_images(system_prompt, user_prompt, images, max_tokens)
                 if images else provider.complete(system_prompt, user_prompt, max_tokens)
@@ -670,11 +688,12 @@ class ModelGateway:
             db.refresh(record)
             return parsed, record
         except Exception as error:
-            record.status = "failed"
-            record.reserved_tokens = 0
+            unknown = purpose.startswith('assistant_v10:') and isinstance(error, ModelError) and error.status_code == 504
+            record.status = "unknown" if unknown else "failed"
+            record.reserved_tokens = reserved if unknown else 0
             record.duration_seconds = max(0, (datetime.now(timezone.utc) - started_at).total_seconds())
             record.error = (error.message if isinstance(error, ModelError) else "模型调用失败")[:1000]
             db.commit()
-            if isinstance(error, ModelError):
+            if isinstance(error, ModelError) or (before_provider is not None and not provider_started):
                 raise
             raise ModelError(502, "模型调用失败") from error

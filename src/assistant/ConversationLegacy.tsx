@@ -1,0 +1,13 @@
+import {useEffect,useState} from 'react'
+import {Button} from '../reader/boardui/button'
+import {parseSession,sessionKey} from './session'
+import {downloadWorkspace,workspaceApi} from './workspace'
+import type {Legacy} from './workspace'
+import type {ConversationStore} from './conversationStore'
+type RecordText={id:string;text:string;origin:string}
+export function ConversationLegacy({store,onClose}:{store:ConversationStore;onClose:()=>void}){
+ const [records,setRecords]=useState<RecordText[]>([]),[raw,setRaw]=useState<unknown>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true)
+ useEffect(()=>{let alive=true;void workspaceApi<Legacy>(store.courseId,'/legacy').then(data=>{if(!alive)return;let localRaw:string|null=null;const list:RecordText[]=[];const collect=(value:unknown,origin:string)=>{if(!value||typeof value!=='object')return;const obj=value as {schema?:unknown;draft?:unknown;entries?:unknown};if(obj.schema!==1)return;if(typeof obj.draft==='string'&&obj.draft)list.push({id:origin+'-draft',text:obj.draft,origin});if(Array.isArray(obj.entries))for(const [i,entry]of obj.entries.entries()){if(entry&&typeof entry.message==='string')list.push({id:origin+'-'+i,text:entry.message,origin})}};collect(data.snapshot,'服务中保存的旧记录');try{localRaw=localStorage.getItem(sessionKey(store.courseId));if(localRaw)collect(parseSession(localRaw,store.courseId),'本浏览器旧记录')}catch{setError('部分旧格式无法显示，原始内容仍可备份。')}setRaw({server:data.snapshot,local_original:localRaw});setRecords(list)}).catch(e=>{if(alive)setError(String(e))}).finally(()=>{if(alive)setLoading(false)});return()=>{alive=false}},[store])
+ function copy(text:string){if(text.length>10000){setError('这条旧文字超过10000字符，请先备份并选择片段。');return}if(store.current().text||store.current().bindings.length)store.newConversation();store.edit(text);onClose()}
+ return <div className="cp-history"><div className="cp-section-heading"><h2 className="text-headline-medium">旧记录</h2><Button variant="ghost" size="xs" onClick={onClose}>返回</Button></div><p className="text-caption-1-regular cp-muted">仅保留历史文字；从未发送的内容不会显示成 AI 回答。本机内容只在你明确复制后保存到新对话。</p>{loading&&<p role="status">正在读取…</p>}{error&&<p role="alert" className="text-caption-1-regular">{error}</p>}{!loading&&!records.length&&<p className="text-body-regular cp-muted">没有可显示的旧记录。</p>}{records.map(r=><article className="cp-attachment" key={r.id}><span className="text-caption-1-regular cp-muted">{r.origin} · 未发送</span><blockquote className="text-body-regular">{r.text}</blockquote><Button variant="secondary" size="small" disabled={store.getSnapshot().readOnly} onClick={()=>copy(r.text)}>复制文字到新对话</Button></article>)}{raw!==null&&<Button variant="ghost" size="small" onClick={()=>downloadWorkspace(raw,'旧记录备份.json')}>备份旧记录</Button>}</div>
+}

@@ -60,7 +60,7 @@ test('自动重连后，停留在学习页也能从排队更新为可诊断', as
   await expect(page.locator('.source-progress:visible')).toContainText('解析已排队', { timeout: 15000 })
   state.sources = [{ ...source, status: 'ready', processing_stage: 'ready' }]
   await expect(page.getByRole('button', { name: '确认计划，开始动态诊断', exact: true })).toBeEnabled({ timeout: 15000 })
-  await expect(page.locator('.workspace-tabs [aria-current=page]')).toHaveText('开始学习')
+  await expect(page.locator('.workspace-tabs [aria-current=page]')).toHaveText('练习题目')
 })
 
 test('上传成功后读取清单失败，不误报上传失败或重新保留成功文件', async ({ page }) => {
@@ -71,7 +71,7 @@ test('上传成功后读取清单失败，不误报上传失败或重新保留�
   await page.locator('.rights-check input').check()
   await page.getByRole('button', { name: /批量导入.*并自动解析/ }).click()
   await expect(page.locator('.source-message')).toContainText('本批接收 1 份新资料')
-  await expect(page.locator('.materials-view .status-reconnect')).toBeVisible()
+  await expect(page.locator('.materials-view .status-reconnect:visible')).toBeVisible()
   await expect(page.locator('.source-error')).toHaveCount(0)
   await expect(page.locator('.selected-file-list')).toHaveCount(0)
   state.offline = false

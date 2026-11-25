@@ -1,6 +1,6 @@
 # 维护与离线回归
 
-更新：2026-11-10。实际模块见 [模块职责](模块职责.md)，历史证据见 [证据索引](证据索引.md)，PR 状态只维护 [本地计划](../development/开发拆分与PR计划.md)。安装与日常启动见 [仓库 README](../../README.md)。
+更新：2026-11-10。实际模块见 [模块职责](模块职责.md)，历史证据见 [证据索引](证据索引.md)，PR 状态只维护 [本地计划](../archive/20261124/阶段任务与契约/开发拆分与PR计划.md)。安装与日常启动见 [仓库 README](../../README.md)。
 
 ## 首次准备与完整入口
 
@@ -22,6 +22,16 @@
 
 ## 局部检查
 
+### 显式保存讲解关系迁移
+
+`assistant_saved_explanations` 默认不会由应用启动时的 `create_all` 自动创建。它依赖 FE-V10 的 `assistant_requests` 与 `assistant_messages` 表；若它们缺失，需先执行两张表的显式增量迁移，再执行保存关系迁移。每一步都必须使用不同且尚不存在的备份文件：
+
+    .venv/Scripts/python.exe scripts/migrate_assistant_generation.py --database-url sqlite:///隔离路径/exam.db --backup-file 隔离路径/exam.before-assistant-generation.db
+
+    .venv/Scripts/python.exe scripts/migrate_assistant_saved_explanations.py --database-url sqlite:///隔离路径/exam.db --backup-file 隔离路径/exam.before-saved-explanations.db
+
+FE-V10和C06迁移均只新增表，不改旧列；保存关系迁移要求课程、主题及助手请求／消息表已存在。先在隔离库演练并确认备份可读；不要对未明确选定的用户数据库执行。C06迁移未完成时，回答仍可查看，保存按钮会禁用。
+
 优先读取失败日志。完整入口的隔离环境仅对子进程有效，直接执行 pytest 前须自己指定 Mock 和临时数据库，因为应用启动仍初始化所配置库。
 
 | 层 | 命令 | 边界 |
@@ -42,4 +52,4 @@ macOS/Linux 局部 Python 路径改 .venv/bin/python，完整入口自动选择�
 - prepare_demo.py / smoke_dev.py：涉及演示写入或启动服务，不属于维护默认入口。
 - 真人前测、未见后测、延迟试验：另需参与者与原答记录，见 [协议](../../evals/tutoring/trial-protocol.md)，工程通过不能替代。
 
-结构移动检查依赖方向、事务、异常、公开字段和原测试；行为修复另附原失败和新样本。快照与限制见 [PR-05](../development/PR-05_维护与验收基线.md)。
+结构移动检查依赖方向、事务、异常、公开字段和原测试；行为修复另附原失败和新样本。快照与限制见 [PR-05](../archive/20261124/实施验收与复核/PR-05_维护与验收基线.md)。

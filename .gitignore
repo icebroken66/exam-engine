@@ -15,3 +15,5 @@ coverage/
 # Browser regression artifacts
 /test-results/
 /playwright-report/
+/public/reader-assets/
+/src/reader/boardui.generated.css

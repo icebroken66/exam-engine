@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "document": {
+    "id": "example-sha256",
+    "name": "public-sample.pdf",
+    "originalFormat": "pdf",
+    "previewFormat": "pdf",
+    "previewVersion": "pdfjs-6.5.438-normalized-v1",
+    "pages": [
+      {
+        "width": 800,
+        "height": 600
+      },
+      {
+        "width": 600,
+        "height": 800
+      }
+    ]
+  },
+  "annotations": [
+    {
+      "id": "note-example",
+      "schema": 1,
+      "kind": "note",
+      "text": "公开自制笔记",
+      "updatedAt": "2026-11-23T02:00:00Z",
+      "anchor": {
+        "documentId": "example-sha256",
+        "previewVersion": "pdfjs-6.5.438-normalized-v1",
+        "page": 1,
+        "space": "normalized-top-left",
+        "regions": [
+          {
+            "x": 0.2,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          }
+        ],
+        "text": "公开选文",
+        "precision": "text"
+      }
+    },
+    {
+      "id": "highlight-example",
+      "schema": 1,
+      "kind": "highlight",
+      "color": "#ffe04a",
+      "updatedAt": "2026-11-23T02:00:00Z",
+      "anchor": {
+        "documentId": "example-sha256",
+        "previewVersion": "pdfjs-6.5.438-normalized-v1",
+        "page": 1,
+        "space": "normalized-top-left",
+        "regions": [
+          {
+            "x": 0.2,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          }
+        ],
+        "text": "公开选文",
+        "precision": "text"
+      }
+    },
+    {
+      "id": "ink-example",
+      "schema": 1,
+      "kind": "ink",
+      "color": "#215cbd",
+      "width": 2,
+      "points": [
+        {
+          "x": 0.2,
+          "y": 0.3
+        },
+        {
+          "x": 0.3,
+          "y": 0.35
+        }
+      ],
+      "updatedAt": "2026-11-23T02:00:00Z",
+      "anchor": {
+        "documentId": "example-sha256",
+        "previewVersion": "pdfjs-6.5.438-normalized-v1",
+        "page": 1,
+        "space": "normalized-top-left",
+        "regions": [
+          {
+            "x": 0.2,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          }
+        ],
+        "text": "公开选文",
+        "precision": "text"
+      }
+    }
+  ],
+  "reader": {
+    "page": 1,
+    "zoom": "fit",
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "selection": {
+      "documentId": "example-sha256",
+      "previewVersion": "pdfjs-6.5.438-normalized-v1",
+      "page": 1,
+      "space": "normalized-top-left",
+      "regions": [
+        {
+          "x": 0.2,
+          "y": 0.3,
+          "width": 0.25,
+          "height": 0.15
+        }
+      ],
+      "text": "公开选文",
+      "precision": "text"
+    },
+    "panelOpen": true,
+    "draft": "请解释这段",
+    "context": {
+      "documentId": "example-sha256",
+      "previewVersion": "pdfjs-6.5.438-normalized-v1",
+      "page": 1,
+      "space": "normalized-top-left",
+      "regions": [
+        {
+          "x": 0.2,
+          "y": 0.3,
+          "width": 0.25,
+          "height": 0.15
+        }
+      ],
+      "text": "公开选文",
+      "precision": "text"
+    }
+  },
+  "savedAt": "2026-11-23T02:00:00Z",
+  "fixtureReferenceExample": {
+    "fixture": true,
+    "label": "固定引用",
+    "target": {
+      "documentId": "example-sha256",
+      "previewVersion": "pdfjs-6.5.438-normalized-v1",
+      "page": 2,
+      "space": "normalized-top-left",
+      "regions": [
+        {
+          "x": 0.2,
+          "y": 0.3,
+          "width": 0.25,
+          "height": 0.15
+        }
+      ],
+      "text": "公开选文",
+      "precision": "text"
+    },
+    "returnState": {
+      "page": 1,
+      "zoom": "fit",
+      "scroll": {
+        "x": 0,
+        "y": 0
+      },
+      "selection": {
+        "documentId": "example-sha256",
+        "previewVersion": "pdfjs-6.5.438-normalized-v1",
+        "page": 1,
+        "space": "normalized-top-left",
+        "regions": [
+          {
+            "x": 0.2,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          }
+        ],
+        "text": "公开选文",
+        "precision": "text"
+      },
+      "panelOpen": true,
+      "draft": "请解释这段",
+      "context": {
+        "documentId": "example-sha256",
+        "previewVersion": "pdfjs-6.5.438-normalized-v1",
+        "page": 1,
+        "space": "normalized-top-left",
+        "regions": [
+          {
+            "x": 0.2,
+            "y": 0.3,
+            "width": 0.25,
+            "height": 0.15
+          }
+        ],
+        "text": "公开选文",
+        "precision": "text"
+      }
+    }
+  }
+}

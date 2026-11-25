@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import {HostedTutoring,openTaskTutoring} from '../assistant/TutoringHost'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { FormEvent } from 'react'
 import {
   ArrowRight,
@@ -25,6 +26,12 @@ import { LearningOperationStatus } from './LearningOperationStatus'
 import { EvidenceAndAnswer } from './LearningAnswerFeedback'
 import { LearningAnswerForm } from './LearningAnswerForm'
 import { CurrentLearningQuestion } from './CurrentLearningQuestion'
+import { attachAssistant } from '../assistant/session'
+import {TASK_CAPTURE,offerCandidate} from '../assistant/workspace'
+import {SavedExplanationBacklinks} from '../assistant/SavedExplanationBacklinks'
+import {conversationStore} from '../assistant/conversationStore'
+import {ASSISTANT_LEARNING_CHANGED,assistantTaskBusy,learningChangeTargetsTask} from '../assistant/learningSync'
+import type {AssistantLearningChange} from '../assistant/learningSync'
 
 const stageLabels = {
   diagnosing: '主动诊断',
@@ -82,10 +89,12 @@ const eventLabels: Record<string, string> = {
 const stages = ['diagnosing', 'remediating', 'practicing', 'retesting']
 
 function focusLearningArea(selector: string) {
+  if(selector==='#formal-answer')window.dispatchEvent(new Event('exam-engine:close-assistant-for-answer'))
   const area = document.querySelector<HTMLElement>(selector)
   const target = area?.matches('form') ? area.querySelector<HTMLElement>('textarea:not(:disabled), input:not(:disabled)') ?? area : area
   target?.scrollIntoView({ block: 'start' })
   target?.focus({ preventScroll: true })
+  if(selector==='#formal-answer')requestAnimationFrame(()=>target?.focus({preventScroll:true}))
 }
 
 function stageIndex(session: LearningSession) {
@@ -110,7 +119,13 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
   }
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
-  const [tutoringBusy, setTutoringBusy] = useState(false)
+  const [legacyTutoringBusy, setTutoringBusy] = useState(false)
+  const assistantStore=conversationStore(courseId)
+  const assistantState=useSyncExternalStore(assistantStore.subscribe,assistantStore.getSnapshot)
+  const assistantRequestBusy=assistantTaskBusy(assistantState.drafts,session?.id,session?.current_task?.id)
+  const [assistantProgressVersion,setAssistantProgressVersion]=useState(0)
+  const [syncedAssistantProgress,setSyncedAssistantProgress]=useState(0)
+  const tutoringBusy=legacyTutoringBusy||assistantRequestBusy||assistantProgressVersion!==syncedAssistantProgress
   const [error, setError] = useState('')
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const [recoveryNotice, setRecoveryNotice] = useState('')
@@ -118,6 +133,19 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
   const [loadError, setLoadError] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
   const lastLoadKey = useRef('')
+  useEffect(()=>{const changed=(event:Event)=>{if(learningChangeTargetsTask((event as CustomEvent<AssistantLearningChange>).detail,courseId,session?.id,session?.current_task?.id))setAssistantProgressVersion(v=>v+1)};window.addEventListener(ASSISTANT_LEARNING_CHANGED,changed);return()=>window.removeEventListener(ASSISTANT_LEARNING_CHANGED,changed)},[courseId,session?.id,session?.current_task?.id])
+  useEffect(()=>{
+    if(!session||busy||legacyTutoringBusy||assistantRequestBusy||assistantProgressVersion===syncedAssistantProgress)return
+    let active=true
+    const original=session
+    void getLearningSession(original.id).then(latest=>{
+      if(!active||latest.course_id!==courseId||latest.id!==original.id)return
+      setSyncedAssistantProgress(assistantProgressVersion)
+      setSession(latest)
+      if(latest.progress_version!==original.progress_version)setRecoveryNotice('已同步助手后的最新学习进度；原作答草稿保留，请核对帮助状态后继续。')
+    }).catch(()=>{if(active){setSyncedAssistantProgress(assistantProgressVersion);setRecoveryRequired(true);setError('助手请求已结束，但学习进度暂未同步；请先重新读取已保存进度，原作答草稿保留。')}})
+    return()=>{active=false}
+  },[assistantProgressVersion,courseId,session?.id,session?.current_task?.id,busy,legacyTutoringBusy,assistantRequestBusy])
 
   useEffect(() => {
     const key = `${courseId}:${sessionId ?? ''}:${refreshVersion}:${loadVersion}`
@@ -155,6 +183,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
   const loadRecovery = loadError && <div className="load-recovery" role="alert"><p>{loadError}。</p><button type="button" className="secondary-action" onClick={() => setLoadVersion(value => value + 1)}>重新读取课程与进度</button></div>
 
   const taskId = session?.current_task?.id
+  useEffect(()=>{const capture=(event:Event)=>{const d=(event as CustomEvent).detail;if(d?.courseId!==courseId||!session?.current_task||!location.hash.includes('/learn')||session.course_id!==courseId)return;const task=session.current_task,attempt=task.latest_attempt;if(task.source_removed)return;if(d.role==='student_work'&&!answer.trim()&&!d.image)return;if((d.role==='submitted_answer'||d.role==='visible_feedback')&&!attempt)return;if(d.role==='visible_feedback'&&attempt?.verdict==='ungraded')return;offerCandidate({courseId,title:task.knowledge_point,binding:{role:d.role,session_id:session.id,task_id:task.id,...(d.role==='student_work'?{text:answer}:{}),...(d.role==='submitted_answer'||d.role==='visible_feedback'?{attempt_id:attempt!.id,text:d.role==='submitted_answer'?attempt!.answer:attempt!.feedback}:{}),...(d.role==='question'?{text:task.stem+(task.options.length?'\n'+task.options.join('\n'):'')}:{})}})};window.addEventListener(TASK_CAPTURE,capture);return()=>window.removeEventListener(TASK_CAPTURE,capture)},[courseId,session,answer])
   useEffect(() => {
     let draft = ''
     try { draft = taskId ? sessionStorage.getItem(`answer:${taskId}`) ?? '' : '' } catch { /* Storage may be disabled. */ }
@@ -212,13 +241,15 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
     }
   }
 
-  async function next() {
+  async function next(independentCheck = false) {
     if (!session || busy || tutoringBusy || recoveryRequired) return
     setRecoveryNotice('')
     setBusy('next')
     setError('')
     try {
-      setSession(await advanceLearningSession(session))
+      const updated=await advanceLearningSession(session, independentCheck)
+      setSession(updated)
+      if(independentCheck&&updated.current_task?.id!==session.current_task?.id)window.dispatchEvent(new CustomEvent('assistant:independent-check-started',{detail:{courseId}}))
     } catch (reason) {
       researchRejectedQuestion(courseId, reason)
       await recoverProgress(session, reason)
@@ -346,6 +377,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
         <span><Bot size={17} /> 当前学习</span>
         <span className="session-persisted"><ShieldCheck size={14} /> 作答与进度已持久化</span>
       </div>
+      {task&&<SavedExplanationBacklinks key={'saved-task-'+task.id} courseId={courseId} sessionId={session.id} taskId={task.id}/>}
 
       {loadRecovery}
       {operationStatus}
@@ -390,8 +422,8 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
         <button type="button" onClick={() => focusLearningArea('#current-question')}>当前题</button>
         <button type="button" onClick={() => focusLearningArea('#formal-answer')}>正式作答</button>
         {!task.source_removed && <>
-          <button type="button" onClick={() => focusLearningArea('.tutoring-panel textarea')}>带学交流</button>
-          <button type="button" onClick={() => focusLearningArea('#latest-tutoring')}>最新交流</button>
+          <button type="button" onClick={openTaskTutoring}>当前题带学</button>
+
         </>}
       </nav>}
 
@@ -413,7 +445,7 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
           <p>Agent 选择这里，是因为保存的诊断作答中出现了真实错误，而不是按固定章节顺序播放。</p>
           <EvidenceAndAnswer task={task} />
           <div className="learning-actions">
-            <button className="primary-action" type="button" onClick={next} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
+            <button className="primary-action" type="button" onClick={()=>void next()} disabled={Boolean(busy) || tutoringBusy || recoveryRequired}>
               {busy === 'next' ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
               {busy === 'next' ? 'Agent 正在出题…' : '开始同类练习'}
             </button>
@@ -431,11 +463,16 @@ export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, ses
       ) : task ? (
         <div className="learning-task-card">
           <CurrentLearningQuestion task={task} graded={graded} />
-          <LearningAnswerForm session={session} task={task} answer={answer} setAnswer={setAnswer} submit={submit} next={next} setSession={setSession} busy={busy} tutoringBusy={tutoringBusy} recoveryRequired={recoveryRequired} graded={graded} displayedAnswer={displayedAnswer} canAnswer={canAnswer} canNext={canNext} />
+          <div className="learning-assistant-context">
+            <button type="button" className="secondary-action" disabled={task.source_removed} onClick={()=>attachAssistant(courseId,{kind:'question',title:task.knowledge_point,text:task.stem+(task.options?.length?String.fromCharCode(10)+task.options.join(String.fromCharCode(10)):'')+(!graded&&answer.trim()?String.fromCharCode(10)+'当前选择／作答草稿（未提交、未判分）：'+answer:''),sessionId:session.id,taskId:task.id,progressVersion:session.progress_version,stage:session.stage})}>将本题关联到统一助手</button>
+            {graded&&attempt&&<button type="button" className="secondary-action" disabled={task.source_removed} onClick={()=>attachAssistant(courseId,{kind:'answer',title:task.knowledge_point,text:'已提交作答：'+attempt.answer+String.fromCharCode(10)+'已显示反馈：'+attempt.feedback,sessionId:session.id,taskId:task.id,progressVersion:session.progress_version,stage:session.stage})}>将已提交作答关联到统一助手</button>}
+          </div>
+          <LearningAnswerForm session={session} task={task} answer={answer} setAnswer={setAnswer} submit={submit} next={()=>void next()} setSession={setSession} busy={busy} tutoringBusy={tutoringBusy} recoveryRequired={recoveryRequired} graded={graded} displayedAnswer={displayedAnswer} canAnswer={canAnswer} canNext={canNext} />
+          {graded&&attempt&&!task.source_removed&&<div className="learning-actions"><button type="button" className="secondary-action" disabled={Boolean(busy)||tutoringBusy||recoveryRequired} onClick={()=>{if(window.confirm('保存当前学习记录并生成一道新题做独立检查？新题不会带入旧作答或纸稿；需要模型出题时按现有预算执行。'))void next(true)}}>用新题独立检查</button><small>新题显式提交后才形成学习证据；看懂讲解不算掌握。</small></div>}
         </div>
       ) : null}
 
-      {task && session.stage !== 'completed' && !task.source_removed && <TutoringPanel key={task.id} session={session} onChanged={setSession} onBusy={setTutoringBusy} disabled={Boolean(busy) || recoveryRequired} />}
+      {new URLSearchParams(location.search).get('assistantDebug')==='1' && task && session.stage !== 'completed' && !task.source_removed && <HostedTutoring key={task.id}><TutoringPanel key={task.id} session={session} onChanged={setSession} onBusy={setTutoringBusy} disabled={Boolean(busy) || recoveryRequired} /></HostedTutoring>}
 
       {session.points.length > 0 && (
         <div className="learning-state-grid">

@@ -709,6 +709,7 @@ class CourseLearningEvidenceRead(BaseModel):
 
 
 class LearningProgressInput(BaseModel):
+    independent_check: bool = False
     expected_task_id: str | None = Field(default=None, min_length=1, max_length=36)
     expected_progress_version: str | None = Field(default=None, min_length=64, max_length=64)
 

@@ -1,0 +1,18 @@
+/* Isolated build: no Tailwind preflight, scanning only the vendored button. */
+@layer theme, legacy, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import './theme.css';
+@import './typography.css';
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@source './button.tsx';
+@source './tree-view.tsx';
+@source './menu-styles.ts';
+@source './input.tsx';
+@source './textarea.tsx';
+@source './scroll-fade.tsx';
+@source './label.tsx';
+@source './hint-text.tsx';
+@source '../workbench';
+@source '../../components';
+@source '../../assistant';
+@custom-variant rtl (&:dir(rtl));
