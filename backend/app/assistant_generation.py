@@ -126,7 +126,7 @@ def _messages(db,course,topic_id,after=0,limit=30,upload_dir=None):
             t=ws.scoped(db,Topic,course,topic_id)
             if not {e['binding_id'] for e in r.evidence if not e.get('retrieved')}<={b['id'] for b in t.bindings}: valid=False
             if upload_dir is not None:
-                for e in r.evidence:
+                for e in [*r.evidence,*r.frozen.get('history_evidence',[])]:
                     if e.get('retrieved'):
                         evidence.verify_retrieved(db,course,e,upload_dir)
                     else:
@@ -144,27 +144,42 @@ def _messages(db,course,topic_id,after=0,limit=30,upload_dir=None):
 def add_notice(r,text):
     if text not in r.notices:r.notices=[*r.notices,text]
 
-def transcript(db,r):
+def transcript(db,r,upload_dir=None):
     active={('retrieval',e['retrieval_id']) if e.get('retrieved') else ('binding',e['binding_id']):e['fingerprint'] for e in r.evidence}
     old=list(db.scalars(select(RequestRow).join(Message,Message.request_id==RequestRow.id).where(RequestRow.topic_id==r.topic_id,RequestRow.course_id==r.course_id,RequestRow.state=='published',RequestRow.id!=r.id,Message.role=='assistant').order_by(Message.id.desc())))
-    history=[];trace=[];corrections=[]
+    history=[];trace=[];corrections=[];history_evidence={}
     for previous in old:
-        reason='target_scope' if not set(previous.frozen['item_ids'])<=set(r.frozen['item_ids']) else 'attachment_removed_or_version_changed' if any(active.get(('retrieval',e['retrieval_id']) if e.get('retrieved') else ('binding',e['binding_id']))!=e['fingerprint'] for e in previous.evidence) else ''
+        reason='target_scope' if not set(previous.frozen['item_ids'])<=set(r.frozen['item_ids']) else ''
+        retained=[]
+        if not reason:
+            for item in [*previous.evidence,*previous.frozen.get('history_evidence',[])]:
+                key=('retrieval',item['retrieval_id']) if item.get('retrieved') else ('binding',item['binding_id'])
+                if active.get(key)==item['fingerprint']:continue
+                if not item.get('retrieved') or upload_dir is None:
+                    reason='attachment_removed_or_version_changed';break
+                try:evidence.verify_retrieved(db,r.course_id,item,upload_dir)
+                except HTTPException:
+                    reason='attachment_removed_or_version_changed';break
+                retained.append(item)
         pair=list(db.scalars(select(Message).where(Message.request_id==previous.id).order_by(Message.id)))
         if not reason and len(pair)!=2:reason='incomplete_pair'
+        correction=False
         if not reason and re.search(r'不是|改为|改成|更正|纠正|否定|假设.*(?:改|变)|不再|我说错|应为|actually|instead|correction',pair[0].text,re.I):
+            correction=True
             corrections.append({'request_id':previous.id,'message_id':pair[0].id,'text':pair[0].text,'provenance':'explicit_user_text','relation':'recheck_prior_assumptions'})
         if not reason and len(history)>=6:reason='recent_pair_limit'
         trace.append({'request_id':previous.id,'included':not bool(reason),'reason':reason or 'same_topic_valid_context'})
         if not reason:history.append({'user':pair[0].text,'assistant':pair[1].text})
+        if not reason or correction:
+            for item in retained:history_evidence[item['fingerprint']]=item
     if any(t['reason']=='recent_pair_limit' for t in trace):add_notice(r,'本次仅纳入最近6组有效问答，较早讨论未完整带入；可直接补充需要沿用的前提')
     if any(t['reason'] in {'target_scope','attachment_removed_or_version_changed'} for t in trace):add_notice(r,'部分历史依赖已移除、变更附件或当前范围外对象，本次未纳入')
-    r.frozen={**r.frozen,'context_trace':trace,'corrections':list(reversed(corrections))}
+    r.frozen={**r.frozen,'context_trace':trace,'corrections':list(reversed(corrections)),'history_evidence':list(history_evidence.values())}
     return list(reversed(history))
 
-def prompt(db,r):
+def prompt(db,r,upload_dir=None):
     model_evidence=[{k:e[k] for k in ['evidence_id','kind','title','text','provenance','snapshot']} for e in r.evidence]
-    history=transcript(db,r)
+    history=transcript(db,r,upload_dir)
     def encode():return json.dumps({'assistant_v10':True,'answer_mode':r.intent.get('answer_mode','short'),'support_mode':r.intent.get('support_mode','auto'),'continuation_of':r.intent.get('continuation_of'),'user_text':r.intent['text'],'clarification':r.frozen.get('clarification'),'evidence':model_evidence,'history':history,'corrections':r.frozen.get('corrections',[]),'groups':r.frozen['groups']},ensure_ascii=False)
     def cost(value):return len((SYSTEM+value+json.dumps(MentorReply.model_json_schema(),ensure_ascii=False)).encode('utf-8'))+256
     value=encode()
@@ -243,7 +258,7 @@ class Runtime:
                 targets=teaching.inspect(db,r,topic)
                 if any(t['consent_required'] for t in targets) and not r.frozen.get('allow_retest_help'):
                     ws.fail('help_required','此讨论包含独立重测题。接受帮助后该题不再计作无提示重测；是否继续？')
-                user_prompt=prompt(db,r)
+                user_prompt=prompt(db,r,upload_dir)
                 if needs_target(r,json.loads(user_prompt)):
                     transition(r,'waiting_input','请在输入框补充完整题目或明确讨论对象，也可通过助手添加内容；原问题会保留');r.frozen={**r.frozen,'needs':'target'};db.commit();return
                 # Precheck the selected intent only; short answers must remain usable
@@ -279,6 +294,9 @@ class Runtime:
                     topic=current_topic(db,r)
                     fresh=evidence.build(db,r,topic,upload_dir,r.frozen.get('user_provided',[]))
                     if [e['fingerprint'] for e in fresh]!=[e['fingerprint'] for e in r.evidence]:ws.fail('context_stale','证据版本已变化，回答未发布')
+                    for historical in r.frozen.get('history_evidence',[]):
+                        try:evidence.verify_retrieved(db,r.course_id,historical,upload_dir)
+                        except HTTPException:ws.fail('context_stale','沿用历史的资料已变化，回答未发布')
                     teaching.validate(db,r)
                     content=evidence.validate_reply(reply,r.evidence,r.intent['text'])
                     db.add(Message(request_id=r.id,course_id=r.course_id,topic_id=r.topic_id,role='assistant',text=content['reply'],claims=content['claims']))

@@ -311,6 +311,80 @@ def test_unmatched_excerpt_waits_for_explicit_downgrade(gen):
     g['runtime'].run();assert read(g,b)['state']=='published'
     assert g['client'].get(g['url']+'/requests/'+b['request_id']+'/citations/e1').status_code==422
 
+def test_followup_retains_valid_retrieved_history_without_retrieving_again(gen):
+    g=gen;t=topic(g);searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    assert read(g,first)['state']=='published'
+    _,follow=request(g,t,text='请换一个比喻继续解释',continuation_of=first['request_id']);g['runtime'].run()
+    assert read(g,follow)['state']=='published'
+    payload=g['provider'].calls[-1]
+    assert payload['evidence']==[] and len(payload['history'])==1
+    assert payload['history'][0]['user']=='Explain Public fixture 0 page 1'
+    with g['factory']() as db:
+        frozen=db.get(AssistantRequest,follow['request_id']).frozen
+        assert frozen['context_trace'][0]['included'] and len(frozen['history_evidence'])==1
+    # Retained text is history, not newly authorized citation IDs.
+    assert g['client'].get(g['url']+'/requests/'+follow['request_id']+'/citations/e1').status_code==422
+
+@pytest.mark.parametrize('change',['removed','text_changed'])
+def test_followup_excludes_invalid_retrieved_history(gen,change):
+    from app.models import EvidenceBlock
+    g=gen;t=topic(g);identity=searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    with g['factory']() as db:
+        if change=='removed':db.get(Source,g['sources'][0]['id']).removed_at=__import__('datetime').datetime.now()
+        else:db.get(EvidenceBlock,identity).text='Changed source text'
+        db.commit()
+    _,follow=request(g,t,text='请换一个比喻继续解释');g['runtime'].run()
+    assert read(g,follow)['state']=='published'
+    assert g['provider'].calls[-1]['history']==[]
+    assert any('部分历史' in notice for notice in read(g,follow)['notices'])
+    with g['factory']() as db:assert not db.get(AssistantRequest,follow['request_id']).frozen['history_evidence']
+
+def test_historical_retrieval_changed_during_followup_blocks_publication(gen):
+    g=gen;t=topic(g);searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    def remove():
+        with g['factory']() as db:
+            db.get(Source,g['sources'][0]['id']).removed_at=__import__('datetime').datetime.now();db.commit()
+    g['provider'].effect=remove
+    _,follow=request(g,t,text='请换一个比喻继续解释');g['runtime'].run()
+    assert len(g['provider'].calls[-1]['history'])==1
+    assert read(g,follow)['state']=='stale'
+    assert not any(m['role']=='assistant' and m['request_id']==follow['request_id'] for m in history(g,t)['items'])
+
+def test_retrieved_history_dependencies_survive_multiple_followups(gen):
+    g=gen;t=topic(g);searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    _,second=request(g,t,text='请换一个比喻继续解释');g['runtime'].run()
+    _,third=request(g,t,text='再解释这个比喻的边界');g['runtime'].run()
+    assert len(g['provider'].calls[-1]['history'])==2
+    with g['factory']() as db:
+        assert len(db.get(AssistantRequest,third['request_id']).frozen['history_evidence'])==1
+        db.get(Source,g['sources'][0]['id']).removed_at=__import__('datetime').datetime.now();db.commit()
+    _,fourth=request(g,t,text='继续解释比喻');g['runtime'].run()
+    assert g['provider'].calls[-1]['history']==[]
+    records=history(g,t)['items']
+    assert all(not m['context_active'] for m in records if m['request_id'] in {first['request_id'],second['request_id'],third['request_id']})
+
+def test_retrieved_history_does_not_cross_topic_or_retargeted_task(gen):
+    g=gen;first_item=item(g);t=topic(g,[first_item]);searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    assert read(g,first)['state']=='published'
+    separate=topic(g)
+    _,other=request(g,separate,text='请换一个比喻继续解释');g['runtime'].run()
+    assert g['provider'].calls[-1]['history']==[]
+    next_item=item(g,task=1)
+    response=g['client'].patch(g['url']+'/topics/'+t['id'],json=cmd(t['revision'],mode='single',item_ids=[next_item['id']]))
+    assert response.status_code==200,response.text
+    from types import SimpleNamespace
+    from app.assistant_generation import transcript
+    t=response.json()
+    with g['factory']() as db:
+        follow=SimpleNamespace(id=str(uuid4()),course_id=g['courses'][0],topic_id=t['id'],evidence=[],frozen={'item_ids':t['item_ids']},notices=[])
+        assert transcript(db,follow)==[]
+        assert follow.frozen['context_trace'][0]['reason']=='target_scope' and not follow.frozen['history_evidence']
+
 def test_removed_attachment_cannot_return_through_history(gen):
     g=gen;t=topic(g);t=attach(g,t,{**binding(g),'text':'Public fixture 0 page 1'}).json();r,b=request(g,t);g['runtime'].run();assert read(g,b)['state']=='published'
     t=g['client'].request('DELETE',g['url']+'/topics/'+t['id']+'/bindings/'+t['bindings'][0]['id'],json=cmd(t['revision'])).json()
