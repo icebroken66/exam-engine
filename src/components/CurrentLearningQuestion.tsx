@@ -19,7 +19,7 @@ export function CurrentLearningQuestion({ task, graded }: { task: LearningTask; 
               {task.provenance === 'original'
                 ? task.answer_provenance === 'ai'
                   ? '真实原题 · AI 参考答案'
-                  : task.answer_provenance === 'human' ? '真实原题 · 人工校订答案' : '真实原题 · 原卷答案'
+                  : task.answer_provenance === 'human' ? '真实原题 · 人工校订答案' : task.answer_provenance === 'source' ? '真实原题 · 原卷答案' : '真实原题 · 答案待确认'
                 : task.provenance === 'adapted'
                   ? '真实原题改编'
                   : task.source_track === 'general' ? '通用生成题' : '无合适原题 · 循证原创'}
