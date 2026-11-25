@@ -175,7 +175,35 @@ test('课程列表无需原对话即可分页重开无锚点与失效讲解',asy
  expect(state.forbidden).toEqual([])
 })
 
-for(const action of ['关闭讲解','返回提问位置','切换讲解','离开页面','离开课程'] as const){
+test('中央讲解键盘打开、输入法Escape保护与关闭恢复入口焦点',async({page})=>{
+ const state=await fixture(page);state.setList([listItem(1)])
+ await page.goto('/#/courses/c1/saved')
+ const opener=page.getByRole('button',{name:'保留问题 1',exact:true}),central=page.getByRole('region',{name:'中央关联讲解'})
+ await opener.focus();await opener.press('Enter');await expect(central).toBeFocused()
+ await page.keyboard.press('Tab');await expect(central.getByRole('button',{name:'返回提问位置',exact:true})).toBeFocused()
+ await page.keyboard.press('Tab');await expect(central.getByRole('button',{name:'关闭讲解',exact:true})).toBeFocused()
+ await central.dispatchEvent('keydown',{key:'Escape',code:'Escape',isComposing:true});await expect(central).toBeVisible()
+ await central.dispatchEvent('keydown',{key:'Escape',code:'Escape',keyCode:229});await expect(central).toBeVisible()
+ await page.keyboard.press('Escape');await expect(central).toHaveCount(0);await expect(opener).toBeFocused()
+ await opener.press('Enter');await expect(central).toBeFocused()
+ await central.getByRole('button',{name:'关闭讲解',exact:true}).click();await expect(opener).toBeFocused()
+ await opener.press('Enter');await expect(central).toBeFocused()
+ await central.getByRole('button',{name:'返回提问位置',exact:true}).click();await expect(opener).toBeFocused()
+ expect(state.paths.filter(path=>path.startsWith('POST '))).toEqual([]);expect(state.forbidden).toEqual([])
+})
+
+test('中央讲解离开原路由后关闭不会抢回旧入口焦点',async({page})=>{
+ const state=await fixture(page);state.setList([listItem(1)])
+ await page.goto('/#/courses/c1/saved');await page.getByRole('button',{name:'保留问题 1',exact:true}).click()
+ const central=page.getByRole('region',{name:'中央关联讲解'});await expect(central).toBeFocused()
+ await page.evaluate(()=>{location.hash='#/courses/c1/overview'})
+ await expect(page.getByRole('region',{name:'课程总览',exact:true})).toBeVisible()
+ await central.press('Escape');await expect(central).toHaveCount(0)
+ await expect(page).toHaveURL(/overview$/);await expect(page.getByRole('button',{name:'保留问题 1',exact:true})).toHaveCount(0)
+ expect(state.forbidden).toEqual([])
+})
+
+for(const action of ['关闭讲解','Escape','返回提问位置','切换讲解','离开页面','离开课程'] as const){
  test('中央讲解引用查询在'+action+'后取消，迟到结果不抢回位置',async({page})=>{
   const state=await fixture(page);state.setList([listItem(1),listItem(2)])
   let release!:()=>void,started!:()=>void,finished!:()=>void
@@ -194,12 +222,13 @@ for(const action of ['关闭讲解','返回提问位置','切换讲解','离开�
   if(action==='切换讲解')await page.evaluate(()=>window.dispatchEvent(new CustomEvent('assistant:show-explanation',{detail:{course_id:'c1',request_id:'saved-request-2',origin:location.href,question:'保留问题 2',message:{role:'assistant',text:'保留解释 2',claims:[{text:'保留解释 2',kind:'evidence',evidence_ids:['ev-1']}],citations:[{evidence_id:'ev-1',actionable:true,title:'讲义',page:2}],context_active:true}}})))
   else if(action==='离开页面')await page.evaluate(()=>{location.hash='#/courses/c1/overview'})
   else if(action==='离开课程')await page.evaluate(()=>{location.hash='#/'})
+  else if(action==='Escape')await central.press('Escape')
   else await central.getByRole('button',{name:action,exact:true}).click()
   await canceled
   const destination=page.url();release();await done
   await expect(page).toHaveURL(destination)
   if(action==='切换讲解'){await expect(central).toContainText('保留解释 2');await expect(central.getByRole('button',{name:/核对并定位/})).toBeEnabled();await expect(central.getByRole('alert')).toHaveCount(0)}
-  if(action==='关闭讲解'||action==='返回提问位置')await expect(central).toHaveCount(0)
+  if(action==='关闭讲解'||action==='Escape'||action==='返回提问位置')await expect(central).toHaveCount(0)
   expect(state.paths.filter(path=>path.startsWith('POST '))).toEqual([]);expect(state.forbidden).toEqual([])
  })
 }
