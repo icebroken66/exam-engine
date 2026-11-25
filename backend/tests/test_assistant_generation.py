@@ -157,6 +157,48 @@ def test_course_retrieval_can_use_two_pdfs_from_the_selected_course(gen):
     included={entry['source_id'] for entry in state['retrieval_trace'] if entry['included']}
     assert included=={g['sources'][0]['id'],second_id}
 
+def test_expression_matching_distinguishes_boundary_conventions():
+    from app.retrieval import query_expressions
+    assert query_expressions('A[mid] < x; lo = mid + 1; hi = mid;') == {'a[mid]<x','lo=mid+1','hi=mid'}
+    assert 'hi=mid' not in query_expressions('hi = mid − 1;')
+    assert 'lo<hi' not in query_expressions('lo <= hi;')
+    assert 'hi=mid' not in query_expressions('hi == mid;')
+    assert query_expressions('请解释二分查找') == set()
+
+def test_expression_bonus_prefers_exact_code_keeps_default_ranking_and_scope(gen):
+    from app.models import DocumentNode, EvidenceBlock
+    from app.retrieval import search_course_evidence
+    g=gen
+    with g['factory']() as db:
+        source_id=g['sources'][0]['id']
+        node=db.scalar(select(DocumentNode).where(DocumentNode.source_id==source_id))
+        # Same lexical words; only the assignment operator and endpoint differ.
+        for identity,text in [('a-closed','binary search A[mid] < x; lo = mid+1; A[mid] > x; hi = mid-1;'),
+                              ('z-half-open','binary search A[mid] < x; lo = mid+1; A[mid] > x; hi = mid;')]:
+            db.add(EvidenceBlock(id=identity,source_id=source_id,node_id=node.id,ordinal=10,page_number=1,text=text,content_hash='fixture'))
+        other_source=g['sources'][1]['id'];other_node=db.scalar(select(DocumentNode).where(DocumentNode.source_id==other_source))
+        db.add(EvidenceBlock(id='other-course',source_id=other_source,node_id=other_node.id,ordinal=10,page_number=1,
+                            text='binary search A[mid] < x; lo=mid+1; A[mid] > x; hi=mid;',content_hash='fixture'))
+        db.commit()
+        query='binary search A[mid] < x; lo=mid+1; A[mid] > x; hi=mid;'
+        baseline=search_course_evidence(db,g['courses'][0],query)
+        ranked=search_course_evidence(db,g['courses'][0],query,match_expressions=True,source_extensions=('.pdf',))
+        assert baseline[0].evidence_id=='a-closed'
+        assert ranked[0].evidence_id=='z-half-open'
+        assert ranked[0].score > ranked[1].score
+        assert all(row.source_id==source_id for row in ranked) and len(ranked)<=3
+        assert search_course_evidence(db,g['courses'][0],'binary search',match_expressions=True)==search_course_evidence(db,g['courses'][0],'binary search')
+
+def test_assistant_enables_expression_matching_with_existing_pdf_limit(gen,monkeypatch):
+    from app import assistant_evidence
+    original=assistant_evidence.search_course_evidence;calls=[]
+    def record(*args,**kwargs):
+        calls.append(kwargs);return original(*args,**kwargs)
+    monkeypatch.setattr(assistant_evidence,'search_course_evidence',record)
+    g=gen;t=topic(g);searchable_pdf_block(g);_,intent=request(g,t,text='Public fixture lo=mid+1 hi=mid')
+    g['runtime'].run();assert read(g,intent)['state']=='published'
+    assert calls and all(call=={'limit':3,'source_extensions':('.pdf',),'match_expressions':True} for call in calls)
+
 def test_course_retrieval_no_hit_is_reported_without_fabricated_evidence(gen):
     g=gen;t=topic(g);_,intent=request(g,t,text='Explain quantum zebra manifold');g['runtime'].run()
     state=read(g,intent);assert state['state']=='published'

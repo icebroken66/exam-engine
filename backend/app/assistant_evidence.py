@@ -1,4 +1,4 @@
-"""Deterministic, page-only evidence. No OCR, retrieval, URL tools or teacher fields."""
+"""Deterministic page evidence and course PDF retrieval; no URL or teacher tools."""
 import re
 from hashlib import sha256
 from pathlib import Path
@@ -31,7 +31,7 @@ def verify_retrieved(db, course_id, item, upload_dir):
 
 def _retrieved(db,request,upload_dir,start,explicit_evidence):
     query=request.intent['text']
-    candidates=search_course_evidence(db,request.course_id,query,limit=3,source_extensions=('.pdf',))
+    candidates=search_course_evidence(db,request.course_id,query,limit=3,source_extensions=('.pdf',),match_expressions=True)
     evidence=[];trace=[];seen=set()
     explicit={(e.get('snapshot',{}).get('source_id'),e.get('snapshot',{}).get('page')) for e in explicit_evidence if not e.get('retrieved') and (e.get('action') or {}).get('kind')=='document'}
     for candidate in candidates:

@@ -12,6 +12,11 @@ from .models import DocumentNode, EvidenceBlock, Source
 
 _WORD = re.compile(r"[a-z0-9_]{2,}", re.IGNORECASE)
 _CJK_RUN = re.compile(r"[\u3400-\u9fff]+")
+_EXPRESSION = re.compile(
+    r"(?<![a-z0-9_])[a-z_][a-z0-9_]*(?:\s*\[\s*[a-z0-9_]+\s*\])?"
+    r"\s*(?:<=|>=|==|!=|=|<|>)\s*[a-z0-9_]+(?:\s*[+\-]\s*[a-z0-9_]+)*",
+    re.IGNORECASE,
+)
 _QUESTION_FILLER = {
     "什么", "怎么", "怎样", "如何", "为何", "为什么", "请问", "一下", "简述", "解释", "说明", "是指",
 }
@@ -42,15 +47,23 @@ def query_terms(text: str) -> set[str]:
     return terms.difference(_QUESTION_FILLER)
 
 
+def query_expressions(text: str) -> set[str]:
+    """Preserve operators in explicitly written comparisons and assignments."""
+    return {re.sub(r"\s+", "", match.group()).casefold()
+            for match in _EXPRESSION.finditer(text.replace('−', '-'))}
+
+
 def search_course_evidence(
     db: Session,
     course_id: str,
     question: str,
     limit: int = 3,
     *, focus: str = "", source_extensions: tuple[str, ...] | None = None,
+    match_expressions: bool = False,
 ) -> list[RetrievedEvidence]:
     terms = query_terms(question)
     focus_terms = query_terms(focus)
+    expressions = query_expressions(question) if match_expressions else set()
     if not terms:
         return []
     statement = (
@@ -74,6 +87,11 @@ def search_course_evidence(
         # Longer exact terms and distinctive English words contribute more than generic bigrams.
         weight = sum(min(len(term), 6) for term in matched)
         score = weight / sum(min(len(term), 6) for term in terms)
+        if expressions:
+            # A bounded bonus supplements lexical relevance; operators must match
+            # whole expressions, so hi=mid cannot also match hi=mid-1.
+            found = query_expressions(block.text)
+            score += 0.3 * len(expressions & found) / len(expressions)
         if focus_terms:
             # A bounded topical tie-breaker for dialogue. Other retrieval callers
             # keep their existing ranking. Definitions often live in page headings.
