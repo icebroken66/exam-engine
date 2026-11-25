@@ -110,6 +110,11 @@ function researchRejectedQuestion(courseId: string, reason: unknown) {
 }
 
 export function LearningPanel({ courseId, refreshVersion = 0, onOpenSources, sessionId, onOpenLatest }: { courseId: string; refreshVersion?: number; onOpenSources: () => void; sessionId?: string | null; onOpenLatest: () => void }) {
+  useEffect(() => {
+    const focusOrigin = () => requestAnimationFrame(() => focusLearningArea('#current-question'))
+    window.addEventListener('exam-engine:focus-learning-origin', focusOrigin)
+    return () => window.removeEventListener('exam-engine:focus-learning-origin', focusOrigin)
+  }, [])
   const [context, setContext] = useState<CourseContext | null>(null)
   const [session, setSession] = useState<LearningSession | null>(null)
   const [answer, setAnswerState] = useState('')
