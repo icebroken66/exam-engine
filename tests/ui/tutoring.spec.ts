@@ -148,6 +148,27 @@ test('较早交流折叠，窄屏与键盘可往返当前题、最新交流和�
   }
 })
 
+test('中央讲解返回当前题时恢复焦点且不触发正式学习写入', async ({ page }) => {
+  const state = fixture()
+  await serve(page, state)
+  await page.goto(`/?assistantDebug=1#/courses/${course.id}/learn`)
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('assistant:show-explanation', { detail: {
+      course_id: 'tutor-course', topic_id: 'topic-1', request_id: 'request-1',
+      question: '当前题为什么这样做？', origin: location.href,
+      message: { id: 1, request_id: 'request-1', role: 'assistant', text: '先看边界。',
+        claims: [{ text: '先看边界。', kind: 'model_explanation', evidence_ids: [], quote: '' }],
+        context_active: true, mocked: true },
+    }}))
+  })
+  const explanation = page.getByRole('region', { name: '中央关联讲解' })
+  await expect(explanation).toBeVisible()
+  await explanation.getByRole('button', { name: '返回提问位置', exact: true }).click()
+  await expect(page.locator('#current-question')).toBeFocused()
+  expect(state.writes).toBe(0)
+  expect(state.formal).toBe(0)
+})
+
 
 test('题目选项显式关联包含当前选择，未提交不产生帮助，带学只在统一侧栏',async({page})=>{
  const state=fixture(true);state.current.current_task.question_type='multiple_choice';state.current.current_task.options=['A. 先选择','B. 先投影'];await serve(page,state);await page.goto('/?assistantDebug=1#/courses/'+course.id+'/learn');await page.getByRole('checkbox',{name:'B. 先投影',exact:true}).check();await page.getByRole('button',{name:'将本题关联到统一助手',exact:true}).click();await expect(page.getByLabel('下次记录附带的上下文')).toContainText('先选择还是先投影');await expect(page.getByLabel('下次记录附带的上下文')).toContainText('当前选择／作答草稿（未提交、未判分）：B. 先投影');expect(state.writes).toBe(0);expect(state.formal).toBe(0);await expect(page.locator('.learning-task-card .tutoring-panel')).toHaveCount(0);await page.getByRole('button',{name:'带学对话',exact:true}).click();await expect(page.locator('.app-unified-assistant .tutoring-panel')).toBeVisible();await expect(page.getByRole('button',{name:'发送带学消息（不提交答案）',exact:true})).toBeDisabled();await page.getByRole('button',{name:'问题记录与上下文',exact:true}).click();await expect(page.getByLabel('下次记录附带的上下文')).toContainText('B. 先投影');expect(state.retestHelp).toBe(false)
