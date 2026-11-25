@@ -385,6 +385,35 @@ def test_retrieved_history_does_not_cross_topic_or_retargeted_task(gen):
         assert transcript(db,follow)==[]
         assert follow.frozen['context_trace'][0]['reason']=='target_scope' and not follow.frozen['history_evidence']
 
+@pytest.mark.parametrize('invalidate_before_save',[False,True])
+@pytest.mark.parametrize('change',['removed','text_changed'])
+def test_saved_followup_without_anchors_tracks_historical_source_validity(gen,invalidate_before_save,change):
+    from app.models import EvidenceBlock
+    g=gen;t=topic(g);searchable_pdf_block(g)
+    _,first=request(g,t,text='Explain Public fixture 0 page 1');g['runtime'].run()
+    _,follow=request(g,t,text='请换一个比喻继续解释');g['runtime'].run()
+    assert read(g,follow)['state']=='published'
+    def remove():
+        with g['factory']() as db:
+            if change=='removed':db.get(Source,g['sources'][0]['id']).removed_at=__import__('datetime').datetime.now()
+            else:db.scalar(select(EvidenceBlock).where(EvidenceBlock.source_id==g['sources'][0]['id'])).text='Modified historical page'
+            db.commit()
+    if invalidate_before_save:remove()
+    state=read(g,follow);calls=len(g['provider'].calls);before=formal(g)
+    body={'schema_version':2,'command_id':str(uuid4()),'expected_revision':state['revision'],'evidence_ids':[]}
+    saved=g['client'].post(g['url']+'/requests/'+follow['request_id']+'/saved-explanations',json=body)
+    assert saved.status_code==200,saved.text
+    record=saved.json();assert record['anchors']==[] and record['valid']==(not invalidate_before_save)
+    original=record['content']
+    assert g['client'].post(g['url']+'/requests/'+follow['request_id']+'/saved-explanations',json=body).json()==record
+    if not invalidate_before_save:remove()
+    reread=g['client'].get(g['url']+'/saved-explanations/'+record['id']).json()
+    assert not reread['valid'] and reread['content']==original and reread['anchors']==[]
+    listed=g['client'].get(g['url']+'/saved-explanations?request_id='+follow['request_id']).json()['items']
+    assert len(listed)==1 and not listed[0]['valid'] and listed[0]['content']==original
+    assert g['client'].get(g['url']+'/saved-explanations?source_id='+g['sources'][0]['id']).json()['items']==[]
+    assert len(g['provider'].calls)==calls and formal(g)==before
+
 def test_removed_attachment_cannot_return_through_history(gen):
     g=gen;t=topic(g);t=attach(g,t,{**binding(g),'text':'Public fixture 0 page 1'}).json();r,b=request(g,t);g['runtime'].run();assert read(g,b)['state']=='published'
     t=g['client'].request('DELETE',g['url']+'/topics/'+t['id']+'/bindings/'+t['bindings'][0]['id'],json=cmd(t['revision'])).json()

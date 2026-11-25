@@ -31,7 +31,7 @@ export function SavedExplanationList({courseId}:{courseId:string}){
   {items.map(item=><article className="assistant-explanation-claim" key={item.id}>
    <h3><Button variant="ghost" onClick={()=>open(item)}>{item.content.question||'打开已保存讲解'}</Button></h3>
    <p>{item.anchors.length?item.anchors.map(anchor=>anchor.title+(anchor.kind==='document'?' · 第'+anchor.page+'页':' · 题目')).join('、'):'保存到讲解列表 · 无关联资料或题目'}</p>
-   {!item.valid&&<p role="status">锚点已失效，历史正文仍可阅读，失效引用不可定位。</p>}
+   {!item.valid&&<p role="status">关联位置或依赖资料已失效，历史正文仍可阅读，失效引用不可定位。</p>}
    {item.content.mocked&&<small>模拟样本</small>}
   </article>)}
   {loading&&<p role="status">正在读取已保存讲解…</p>}

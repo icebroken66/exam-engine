@@ -45,7 +45,7 @@ def save(db, course_id, request_id, body:SaveExplanation, upload_dir):
                              command_id=body.command_id,payload_hash=fingerprint,
                              content=payload['content'],anchors=anchors,revision=1)
         db.add(row);db.flush()
-        return output(row)
+        return output(row,_valid(db,row,upload_dir))
     return workspace.command(db,course_id,body,'save_explanation:'+request_id,create)
 
 
@@ -88,8 +88,12 @@ def list_for_anchor(db,course_id,upload_dir,source_id=None,session_id=None,task_
 
 
 def _valid(db,row,upload_dir):
-    if not row.anchors:return True
     try:
+        request=db.get(generation.RequestRow,row.request_id)
+        if request:
+            if request.course_id!=row.course_id or request.topic_id!=row.topic_id:return False
+            for historical in request.frozen.get('history_evidence',[]):
+                generation.evidence.verify_retrieved(db,row.course_id,historical,upload_dir)
         for anchor in row.anchors:
             citation=generation.citation(db,row.course_id,row.request_id,anchor['evidence_id'],upload_dir)
             action=citation['action']

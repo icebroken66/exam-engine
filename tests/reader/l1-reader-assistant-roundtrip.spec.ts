@@ -129,7 +129,7 @@ test('失效讲解从助手和资料入口仍能回访正文，定位保持禁�
  await page.reload()
  await expect(page.locator('.rl-page')).toHaveAttribute('data-ready','true')
  const backlinks=page.getByRole('complementary',{name:'已保存的讲解'})
- await expect(backlinks).toContainText('锚点已失效，内容仍保留')
+ await expect(backlinks).toContainText('关联位置或依赖资料已失效，内容仍保留')
  await backlinks.getByRole('button',{name:/索引为什么能加快查找/}).click()
  const central=page.getByRole('region',{name:'中央关联讲解'})
  await expect(central).toContainText(explanationText)
@@ -173,6 +173,22 @@ test('课程列表无需原对话即可分页重开无锚点与失效讲解',asy
  await expect(list.getByRole('button',{name:'保留问题 0',exact:true})).toBeVisible()
  expect(state.paths.filter(path=>path.startsWith('POST '))).toEqual([])
  expect(state.forbidden).toEqual([])
+})
+
+test('无锚点追问的依赖资料失效后仍可从列表重开正文',async({page})=>{
+ const state=await fixture(page),saved={...listItem(0),valid:false};state.setList([saved])
+ await page.goto('/#/courses/c1/saved')
+ const list=page.getByRole('region',{name:'课程已保存讲解'})
+ await expect(list).toContainText('无关联资料或题目')
+ await expect(list).toContainText('关联位置或依赖资料已失效')
+ await list.getByRole('button',{name:'保留问题 0',exact:true}).click()
+ const central=page.getByRole('region',{name:'中央关联讲解'})
+ await expect(central).toContainText('保留解释 0')
+ await expect(central).toContainText('不能当作当前有效依据')
+ await expect(central.getByRole('button',{name:/核对并定位/})).toBeDisabled()
+ await page.keyboard.press('Escape');await page.reload()
+ await expect(list).toContainText('关联位置或依赖资料已失效')
+ expect(state.paths.filter(path=>path.startsWith('POST '))).toEqual([]);expect(state.forbidden).toEqual([])
 })
 
 test('中央讲解键盘打开、输入法Escape保护与关闭恢复入口焦点',async({page})=>{
