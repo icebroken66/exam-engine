@@ -175,6 +175,61 @@ test('课程列表无需原对话即可分页重开无锚点与失效讲解',asy
  expect(state.forbidden).toEqual([])
 })
 
+for(const action of ['关闭讲解','返回提问位置','切换讲解','离开页面','离开课程'] as const){
+ test('中央讲解引用查询在'+action+'后取消，迟到结果不抢回位置',async({page})=>{
+  const state=await fixture(page);state.setList([listItem(1),listItem(2)])
+  let release!:()=>void,started!:()=>void,finished!:()=>void
+  const held=new Promise<void>(resolve=>{release=resolve}),received=new Promise<void>(resolve=>{started=resolve}),done=new Promise<void>(resolve=>{finished=resolve})
+  await page.route('**/requests/saved-request-1/citations/ev-1',async route=>{
+   started();await held
+   try{await route.fulfill(action==='切换讲解'?{status:503,json:{detail:{message:'旧讲解查询失败'}}}:{json:{action:{kind:'document',course_id:'c1',source_id:'s1',source_sha256:sha,preview_version:preview,page:2}}})}catch{/* The canceled browser request may already be disposed. */}finally{finished()}
+  })
+  await page.goto('/#/courses/c1/saved')
+  await page.getByRole('button',{name:'保留问题 1',exact:true}).click()
+  const central=page.getByRole('region',{name:'中央关联讲解'}),locate=central.getByRole('button',{name:/核对并定位/})
+  await locate.click();await received
+  await expect(central.getByRole('status')).toContainText('正在核对来源')
+  await expect(locate).toBeDisabled()
+  const canceled=page.waitForEvent('requestfailed',request=>request.url().includes('/requests/saved-request-1/citations/ev-1'))
+  if(action==='切换讲解')await page.evaluate(()=>window.dispatchEvent(new CustomEvent('assistant:show-explanation',{detail:{course_id:'c1',request_id:'saved-request-2',origin:location.href,question:'保留问题 2',message:{role:'assistant',text:'保留解释 2',claims:[{text:'保留解释 2',kind:'evidence',evidence_ids:['ev-1']}],citations:[{evidence_id:'ev-1',actionable:true,title:'讲义',page:2}],context_active:true}}})))
+  else if(action==='离开页面')await page.evaluate(()=>{location.hash='#/courses/c1/overview'})
+  else if(action==='离开课程')await page.evaluate(()=>{location.hash='#/'})
+  else await central.getByRole('button',{name:action,exact:true}).click()
+  await canceled
+  const destination=page.url();release();await done
+  await expect(page).toHaveURL(destination)
+  if(action==='切换讲解'){await expect(central).toContainText('保留解释 2');await expect(central.getByRole('button',{name:/核对并定位/})).toBeEnabled();await expect(central.getByRole('alert')).toHaveCount(0)}
+  if(action==='关闭讲解'||action==='返回提问位置')await expect(central).toHaveCount(0)
+  expect(state.paths.filter(path=>path.startsWith('POST '))).toEqual([]);expect(state.forbidden).toEqual([])
+ })
+}
+
+test('中央讲解引用核对失败保留正文且可显式重试',async({page})=>{
+ const state=await fixture(page);state.setList([listItem(1)]);let calls=0
+ await page.route('**/requests/saved-request-1/citations/ev-1',route=>++calls===1
+  ?route.fulfill({status:503,json:{detail:{message:'来源核对暂不可用'}}})
+  :route.fulfill({json:{action:{kind:'document',course_id:'c1',source_id:'s1',source_sha256:sha,preview_version:preview,page:2}}}))
+ await page.goto('/#/courses/c1/saved');await page.getByRole('button',{name:'保留问题 1',exact:true}).click()
+ const central=page.getByRole('region',{name:'中央关联讲解'}),locate=central.getByRole('button',{name:/核对并定位/})
+ await locate.click();await expect(central.getByRole('alert')).toContainText('来源核对暂不可用')
+ await expect(central).toContainText('保留解释 1');await expect(locate).toBeEnabled();expect(calls).toBe(1)
+ await locate.click();await expect(page).toHaveURL(/citation_page=2/);await expect(central.getByRole('alert')).toHaveCount(0)
+ expect(calls).toBe(2);expect(state.forbidden).toEqual([])
+})
+
+for(const targetCourse of ['c1','other-course']){
+ test('中央讲解引用校验课程 '+targetCourse,async({page})=>{
+  const state=await fixture(page);state.setList([listItem(1)])
+  await page.route('**/requests/saved-request-1/citations/ev-1',route=>route.fulfill({json:{action:{kind:'document',course_id:targetCourse,source_id:'s1',source_sha256:sha,preview_version:preview,page:2}}}))
+  await page.goto('/#/courses/c1/saved');await page.getByRole('button',{name:'保留问题 1',exact:true}).click()
+  const central=page.getByRole('region',{name:'中央关联讲解'})
+  await central.getByRole('button',{name:/核对并定位/}).click()
+  if(targetCourse==='c1'){await expect(page).toHaveURL(/citation_page=2/);await expect(page.locator('.rl-page')).toHaveAttribute('data-page','2')}
+  else{await expect(central.getByRole('alert')).toContainText('本课程资料页定位');await expect(page).toHaveURL(new RegExp("#.*courses.*c1.*saved$"));await expect(central.getByRole('button',{name:/核对并定位/})).toBeEnabled()}
+  expect(state.forbidden).toEqual([])
+ })
+}
+
 test('课程列表加载失败可重试，空列表提供明确保存说明',async({page})=>{
  const state=await fixture(page);state.setList([]);state.failNextList()
  await page.goto('/#/courses/c1/saved')

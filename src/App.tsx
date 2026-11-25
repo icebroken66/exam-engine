@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Archive,
@@ -270,15 +270,36 @@ interface CourseWorkspaceProps {
 function CourseWorkspace({ course, sourceId, assistantOpen, onAssistantChange, view, sessionId, onNavigate, onArchived, onDeleted }: CourseWorkspaceProps) {
   const [explanation,setExplanation]=useState<{course_id:string;topic_id?:string;request_id:string;message:ConversationMessage;question:string;origin:string}|null>(null)
   const [explanationError,setExplanationError]=useState('')
-  useEffect(()=>{const show=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.course_id===course.id&&value.message?.role==='assistant'){setExplanation(value);setExplanationError('')}};window.addEventListener('assistant:show-explanation',show);return()=>window.removeEventListener('assistant:show-explanation',show)},[course.id])
+  const citationLookup=useRef<AbortController|null>(null)
+  const [citationLoading,setCitationLoading]=useState(false)
+  function cancelCitationLookup(){citationLookup.current?.abort();citationLookup.current=null;setCitationLoading(false)}
+  function closeExplanation(){cancelCitationLookup();setExplanation(null);setExplanationError('')}
+  useEffect(()=>{
+    const cancel=()=>{citationLookup.current?.abort();citationLookup.current=null;setCitationLoading(false)}
+    const show=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.course_id===course.id&&value.message?.role==='assistant'){cancel();setExplanation(value);setExplanationError('')}}
+    window.addEventListener('assistant:show-explanation',show);window.addEventListener('hashchange',cancel)
+    return()=>{citationLookup.current?.abort();citationLookup.current=null;window.removeEventListener('assistant:show-explanation',show);window.removeEventListener('hashchange',cancel)}
+  },[course.id])
   function returnToExplanationOrigin(){
     if(!explanation)return
+    cancelCitationLookup()
     try{const origin=new URL(explanation.origin,location.href),originHash=origin.hash,current=new URLSearchParams(location.hash.split('?')[1]||''),previous=new URLSearchParams(originHash.split('?')[1]||'');if(origin.origin===location.origin&&originHash.includes('/reader?')&&current.get('source')===previous.get('source')){window.dispatchEvent(new Event('assistant:citation-back'));setExplanation(null);return}if(origin.origin===location.origin){if(originHash.includes('/learn')){if(location.hash!==origin.hash)location.hash=origin.hash;window.dispatchEvent(new Event('exam-engine:focus-learning-origin'));setExplanation(null);return}location.href=origin.href;setExplanation(null)}}catch{}
   }
   async function locateExplanation(evidenceId:string){
     if(!explanation)return
-    setExplanationError('')
-    try{const response=await fetch('/api/courses/'+encodeURIComponent(course.id)+'/assistant/v2/requests/'+encodeURIComponent(explanation.request_id)+'/citations/'+encodeURIComponent(evidenceId),{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.detail?.message||'来源已失效或无法定位')}const result=await response.json();if(result.action?.kind!=='document')throw new Error('该依据没有资料页定位');const a=result.action;const target='#/courses/'+encodeURIComponent(a.course_id)+'/reader?source='+encodeURIComponent(a.source_id)+'&citation_page='+a.page+'&citation_sha='+encodeURIComponent(a.source_sha256)+'&citation_version='+encodeURIComponent(a.preview_version);if(location.hash!==target)location.hash=target;else window.dispatchEvent(new CustomEvent('assistant:citation-location',{detail:a}))}catch(e){setExplanationError(e instanceof Error?e.message:String(e))}
+    cancelCitationLookup()
+    const controller=new AbortController(),origin=location.href
+    citationLookup.current=controller;setCitationLoading(true);setExplanationError('')
+    try{
+      const response=await fetch('/api/courses/'+encodeURIComponent(course.id)+'/assistant/v2/requests/'+encodeURIComponent(explanation.request_id)+'/citations/'+encodeURIComponent(evidenceId),{cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])})
+      if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.detail?.message||'来源已失效或无法定位')}
+      const result=await response.json()
+      if(controller.signal.aborted||citationLookup.current!==controller||location.href!==origin)return
+      if(result.action?.kind!=='document'||result.action.course_id!==course.id)throw new Error('该依据没有本课程资料页定位')
+      const a=result.action,target='#/courses/'+encodeURIComponent(a.course_id)+'/reader?source='+encodeURIComponent(a.source_id)+'&citation_page='+a.page+'&citation_sha='+encodeURIComponent(a.source_sha256)+'&citation_version='+encodeURIComponent(a.preview_version)
+      if(location.hash!==target)location.hash=target;else window.dispatchEvent(new CustomEvent('assistant:citation-location',{detail:a}))
+    }catch(e){if(!controller.signal.aborted&&citationLookup.current===controller&&location.href===origin)setExplanationError(e instanceof Error?e.message:String(e))}
+    finally{if(citationLookup.current===controller){citationLookup.current=null;setCitationLoading(false)}}
   }
   const [learningVersion, setLearningVersion] = useState(0)
   const [questionVersion, setQuestionVersion] = useState(0)
@@ -354,7 +375,7 @@ function CourseWorkspace({ course, sourceId, assistantOpen, onAssistantChange, v
       {(visited.has('questions') || view === 'questions') && <div hidden={view !== 'questions'}><div className="view-heading"><div><h2>题目校准</h2><p>核对提取的题目和参考答案，为后续学习提供可靠依据。</p></div></div><QuestionBankPanel courseId={course.id} reloadToken={questionVersion} onChanged={() => { setQuestionVersion(version => version + 1); refreshLearningContext() }} /></div>}
       {view === 'history' && <LearningHistoryPanel courseId={course.id} onResume={id => onNavigate('learn', id)} onChanged={refreshLearningContext} />}
       {view === 'analytics' && <><div className="view-heading"><div><h2>考点概览</h2><p>查看现有资料中的考点分布，结合学习记录安排复习。</p></div></div><CoveragePanel courseId={course.id} reloadToken={questionVersion} /><AnalyticsPanel courseId={course.id} reloadToken={questionVersion} /></>}
-      {explanation&&<section className="assistant-explanation" aria-label="中央关联讲解"><header><div><span className="eyebrow">临时学习内容</span><h2>关联讲解</h2></div><div className="assistant-explanation-actions"><button type="button" className="secondary-action" onClick={returnToExplanationOrigin}>返回提问位置</button><button type="button" className="secondary-action" onClick={()=>setExplanation(null)}>关闭讲解</button></div></header><p className="assistant-explanation-question">关联问题：{explanation.question||'（历史问题正文不可用）'}</p><p className="assistant-explanation-question">{explanation.message.mocked?'模拟样本':'已发布回答'} · 不产生新请求</p>{explanation.message.claims.map((claim,index)=><article key={index} className="assistant-explanation-claim"><StudyContent allowLinks={false}>{claim.text}</StudyContent>{claim.kind==='model_explanation'&&<small>模型解释／推导，未经外部资料核验。</small>}{claim.evidence_ids.length>0&&<div className="assistant-explanation-citations">{claim.evidence_ids.map(id=>{const citation=explanation.message.citations?.find(c=>c.evidence_id===id);return <button type="button" key={id} disabled={!citation?.actionable} onClick={()=>void locateExplanation(id)}>{citation?.title||'核对依据'}{citation?.page?' · 第 '+citation.page+' 页':''} · 核对并定位</button>})}</div>}</article>)}{!explanation.message.context_active&&<p role="status">部分原始上下文已失效；以下是保留的历史讲解，不能当作当前有效依据，也不能定位失效来源。</p>}{explanationError&&<p className="assistant-explanation-error" role="alert">{explanationError}</p>}<p className="assistant-explanation-note">临时讲解不会修改原题、原件或个人批注；保存及撤销请使用助手回答消息上的明确保存操作。</p></section>}
+      {explanation&&<section className="assistant-explanation" aria-label="中央关联讲解"><header><div><span className="eyebrow">临时学习内容</span><h2>关联讲解</h2></div><div className="assistant-explanation-actions"><button type="button" className="secondary-action" onClick={returnToExplanationOrigin}>返回提问位置</button><button type="button" className="secondary-action" onClick={closeExplanation}>关闭讲解</button></div></header><p className="assistant-explanation-question">关联问题：{explanation.question||'（历史问题正文不可用）'}</p><p className="assistant-explanation-question">{explanation.message.mocked?'模拟样本':'已发布回答'} · 不产生新请求</p>{explanation.message.claims.map((claim,index)=><article key={index} className="assistant-explanation-claim"><StudyContent allowLinks={false}>{claim.text}</StudyContent>{claim.kind==='model_explanation'&&<small>模型解释／推导，未经外部资料核验。</small>}{claim.evidence_ids.length>0&&<div className="assistant-explanation-citations">{claim.evidence_ids.map(id=>{const citation=explanation.message.citations?.find(c=>c.evidence_id===id);return <button type="button" key={id} disabled={!citation?.actionable||citationLoading} onClick={()=>void locateExplanation(id)}>{citation?.title||'核对依据'}{citation?.page?' · 第 '+citation.page+' 页':''} · 核对并定位</button>})}</div>}</article>)}{!explanation.message.context_active&&<p role="status">部分原始上下文已失效；以下是保留的历史讲解，不能当作当前有效依据，也不能定位失效来源。</p>}{citationLoading&&<p role="status">正在核对来源…关闭讲解或离开页面会取消定位。</p>}{explanationError&&<p className="assistant-explanation-error" role="alert">{explanationError}</p>}<p className="assistant-explanation-note">临时讲解不会修改原题、原件或个人批注；保存及撤销请使用助手回答消息上的明确保存操作。</p></section>}
       {showDelete && <DeleteCourseDialog course={course} onClose={() => setShowDelete(false)} onDeleted={onDeleted} />}
     </div>
   )
