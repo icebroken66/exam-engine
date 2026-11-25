@@ -511,6 +511,45 @@ def test_user_provided_text_cannot_be_published_as_document_evidence():
     with pytest.raises(HTTPException):validate_reply(reply,evidence)
 
 
+def test_page_numbers_bind_to_one_exact_pdf_evidence_page():
+    from app.assistant_evidence import validate_reply
+    from app.assistant_generation_dto import MentorReply
+    from fastapi import HTTPException
+    evidence=[
+        {'evidence_id':'e1','provenance':'verified_source_text','text':'Source A fact','snapshot':{'page':2},'action':{'kind':'document','page':2}},
+        {'evidence_id':'e2','provenance':'verified_source_text','text':'Source B fact','snapshot':{'page':18},'action':{'kind':'document','page':18}},
+    ]
+    claims=[
+        {'text':'A资料第2页写明 Source A fact。','kind':'evidence','evidence_ids':['e1'],'quote':'Source A fact'},
+        {'text':'B资料第18页写明 Source B fact。','kind':'evidence','evidence_ids':['e2'],'quote':'Source B fact'},
+    ]
+    good=MentorReply(reply='\n\n'.join(c['text'] for c in claims),claims=claims)
+    assert validate_reply(good,evidence)['reply']==good.reply
+    bad_claims=[{**claims[0],'evidence_ids':['e2']},claims[1]]
+    with pytest.raises(HTTPException):validate_reply(MentorReply(reply='\n\n'.join(c['text'] for c in bad_claims),claims=bad_claims),evidence)
+    wrong=[{**claims[0],'text':'A资料第18页写明 Source A fact。'},claims[1]]
+    with pytest.raises(HTTPException):validate_reply(MentorReply(reply='\n\n'.join(c['text'] for c in wrong),claims=wrong),evidence)
+    printed=[{**claims[0],'text':'A资料印刷页1写明 Source A fact。'},claims[1]]
+    with pytest.raises(HTTPException):validate_reply(MentorReply(reply='\n\n'.join(c['text'] for c in printed),claims=printed),evidence)
+    explanation={'text':'A资料第2页说明了这一点。','kind':'model_explanation','evidence_ids':[],'quote':''}
+    with pytest.raises(HTTPException):validate_reply(MentorReply(reply=explanation['text'],claims=[explanation]),evidence)
+    combined={'text':'A资料第2页与B资料第18页分别说明事实。','kind':'evidence','evidence_ids':['e1','e2'],'quote':'Source A fact'}
+    with pytest.raises(HTTPException):validate_reply(MentorReply(reply=combined['text'],claims=[combined]),evidence)
+
+
+def test_assistant_usage_reserves_configured_input_ceiling(gen):
+    from app.models import UsageRecord
+    g=gen;t=topic(g);observed=[]
+    def inspect_reservation():
+        with g['factory']() as db:
+            record=db.scalar(select(UsageRecord).order_by(UsageRecord.created_at.desc(),UsageRecord.id.desc()))
+            observed.append((record.reserved_tokens,record.status))
+    g['provider'].effect=inspect_reservation
+    _,intent=request(g,t);g['runtime'].run()
+    assert read(g,intent)['state']=='published'
+    assert observed==[(12000+1500,'running')]
+
+
 def test_image_uncertainty_and_confirmed_correction_freeze_separate_versions(gen):
     g=gen;t=topic(g,[item(g)]);meta=paper_image(g)
     t=attach(g,t,binding(g,role='student_work',text='',**meta)).json()

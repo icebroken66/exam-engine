@@ -630,7 +630,8 @@ class ModelGateway:
         image_estimate = sum(len(image.data) for image in images or []) // 3
         estimated_prompt = max(1, (len(system_prompt) + len(user_prompt)) // 4 + image_estimate)
         if purpose.startswith('assistant_v10:'):
-            estimated_prompt = len((system_prompt + user_prompt).encode('utf-8'))
+            from .assistant_generation import INPUT_LIMIT
+            estimated_prompt = INPUT_LIMIT
         reserved = estimated_prompt + max_tokens
         day_start = datetime.combine(datetime.now(timezone.utc).date(), time.min)
         with self._budget_lock:

@@ -111,17 +111,21 @@ def validate_reply(reply,evidence,student_text=''):
         claim_evidence=[by_id[eid] for eid in claim.evidence_ids if eid in by_id]
         if claim.kind=='evidence' and any(e['provenance']=='user_provided_text' for e in claim_evidence):
             ws.fail('invalid_citation','用户提供文字未经资料核验，不能作为资料证据引用',502)
-        pages={str(by_id[eid]['snapshot']['page']) for eid in claim.evidence_ids if eid in by_id and by_id[eid]['snapshot'].get('page')}
-        mentioned=re.findall(r'第\s*(\d+)\s*页|(?:page|p\.)\s*(\d+)',claim.text,re.IGNORECASE)
-        if any((a or b) not in pages for a,b in mentioned):
-            ws.fail('invalid_citation','回答含无法核对的页码，未发布',502)
+        mentioned=re.findall(r'第\s*(\d+)\s*页|(?:印刷页|资料页码|printed\s+page)\s*(\d+)|(?:page|p\.)\s*(\d+)',claim.text,re.IGNORECASE)
+        if mentioned:
+            if claim.kind!='evidence' or len(claim.evidence_ids)!=1:
+                ws.fail('invalid_citation','页码必须绑定单一资料证据，未发布',502)
+            cited=by_id.get(claim.evidence_ids[0])
+            page=(cited or {}).get('action',{}).get('page')
+            if page is None or any(int(next(part for part in match if part))!=page for match in mentioned):
+                ws.fail('invalid_citation','回答页码与引用资料的PDF页序不匹配，未发布',502)
         if claim.text not in reply.reply:
             ws.fail('invalid_citation','回答论断与正文不一致，未发布',502)
         if claim.kind=='model_explanation':
             if claim.evidence_ids or claim.quote:
                 ws.fail('invalid_citation','模型补充不能伪装成资料引文',502)
-        elif not claim.evidence_ids or not claim.quote:
-            ws.fail('invalid_citation','引用缺少证据或引文，未发布',502)
+        elif len(claim.evidence_ids)!=1 or not claim.quote:
+            ws.fail('invalid_citation','每条资料论断必须绑定一个证据ID和连续引文，未发布',502)
         for identity in claim.evidence_ids:
             e=by_id.get(identity)
             if not e or normalize(claim.quote) not in normalize(e['text']):

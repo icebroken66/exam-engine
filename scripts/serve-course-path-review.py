@@ -23,6 +23,15 @@ class CappedProvider:
             'model':self.model,'attempt_limit':attempt_limit,'token_limit':token_limit,'committed_tokens':0,'attempts':[]}
         if any(self.ledger[k]!=v for k,v in [('model',self.model),('attempt_limit',attempt_limit),('token_limit',token_limit)]):
             raise RuntimeError('Review configuration differs from existing ledger')
+        adjusted=0
+        for entry in self.ledger['attempts']:
+            if entry['state']!='returned':
+                conservative=12000+int(entry.get('max_output_tokens',1500))
+                adjusted+=max(0,conservative-entry['reserved_tokens'])
+                entry['reserved_tokens']=max(entry['reserved_tokens'],conservative)
+        if adjusted:
+            self.ledger['committed_tokens']+=adjusted
+            self.save()
 
     def save(self):
         temporary=self.path.with_suffix('.tmp')
@@ -31,13 +40,13 @@ class CappedProvider:
     def complete(self,system,user,max_tokens):
         from app.model_gateway import ModelError
         if '"assistant_v10": true' not in user:raise ModelError(403,'本次授权仅允许统一助手路径，不允许自动规划／评分调用')
-        reserved=len((system+user).encode('utf-8'))+max_tokens
+        reserved=12000+max_tokens
         with self.lock:
             entries=self.ledger['attempts']
-            if any(e['state']!='returned' for e in entries):raise ModelError(409,'已有未知或失败调用，停止真实演练，不自动重发')
+            if any(e['state']!='returned' for e in entries):raise ModelError(409,'存在未与供应商用量记录对账的调用；停止后续真实请求')
             if len(entries)>=self.attempt_limit or self.ledger['committed_tokens']+reserved>self.token_limit:
                 raise ModelError(429,'已达到本次授权调用数或总token上限')
-            entry={'attempt':len(entries)+1,'state':'dispatched_unknown','reserved_tokens':reserved,
+            entry={'attempt':len(entries)+1,'state':'dispatched_unknown','reserved_tokens':reserved,'max_output_tokens':max_tokens,
                    'prompt_sha256':sha256((system+user).encode()).hexdigest(),'started_at':datetime.now(timezone.utc).isoformat()}
             entries.append(entry);self.ledger['committed_tokens']+=reserved;self.save()
             (self.directory/('prompt-%02d.json'%entry['attempt'])).write_text(json.dumps({'system':system,'user':user},ensure_ascii=False),encoding='utf-8')
